@@ -27,8 +27,8 @@ import {
 import {
     GodRaysShader
 } from "./rendering/GodRaysShader.js";
-
-
+import { TerrainSystem } from "./world/TerrainSystem.js";
+import { TerrainDebug } from "./debug/debugTerrain.js";
 // ==================================================
 // SCENE
 // ==================================================
@@ -296,22 +296,34 @@ godRaysPass.uniforms
 
 
 // ==================================================
-// TEMPORARY TERRAIN FUNCTION
+// TERRAIN
 // ==================================================
-//
-// The actual procedural terrain will replace this.
-// For now the world is completely flat at Y = 0.
-//
 
-function getTerrainHeight(
-    x,
-    z
-) {
+const terrain =
+    new TerrainSystem({
 
-    return 0;
+        scene,
 
-}
+        size: 115,
 
+        resolution: 150,
+
+        baseHeight: 0.0,
+
+        maxHeight: 4.0,
+
+        seed: 482917
+
+    });
+
+const terrainDebug =
+    new TerrainDebug({
+
+        scene,
+
+        terrain
+
+    });
 
 // ==================================================
 // FIRST PERSON CONTROLLER
@@ -320,35 +332,29 @@ function getTerrainHeight(
 const fpsController =
     new FirstPersonController({
 
-        camera:
-            camera,
+        camera,
 
         domElement:
             renderer.domElement,
 
-        scene:
-            scene,
+        scene,
 
         terrainHeightFunction:
-            getTerrainHeight,
+            terrain.getHeight.bind(
+                terrain
+            ),
 
-        movementSpeed:
-            5,
+        movementSpeed: 5,
 
-        jumpHeight:
-            2,
+        jumpHeight: 2,
 
-        gravity:
-            18,
+        gravity: 18,
 
-        playerHeight:
-            1.7,
+        playerHeight: 1.7,
 
-        playerRadius:
-            0.35,
+        playerRadius: 0.35,
 
-        debugCapsule:
-            true
+        debugCapsule: true
 
     });
 
