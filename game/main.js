@@ -27,8 +27,145 @@ import {
 import {
     GodRaysShader
 } from "./rendering/GodRaysShader.js";
-import { TerrainSystem } from "./world/TerrainSystem.js";
-import { TerrainDebug } from "./debug/debugTerrain.js";
+
+import {
+    ChunkManager
+} from "./world/ChunkManager.js";
+import {
+    GrassSystem
+} from "./vegetation/GrassSystem.js"
+import Stats from "./node_modules/three/examples/jsm/libs/stats.module.js";
+import { SurfaceSystem } from "./world/SurfaceSystem.js";
+import { Sky } from "./node_modules/three/examples/jsm/objects/Sky.js";
+
+// ==================================================
+// OPEN MAP IN NEW TAB
+// ==================================================
+
+function openMapInNewTab(canvas, title) {
+
+    const imageURL =
+        canvas.toDataURL("image/png");
+
+    const newTab =
+        window.open("", "_blank");
+
+    if (!newTab) {
+        console.warn(
+            "Browser blocked the map tab."
+        );
+        return;
+    }
+
+    newTab.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>${title}</title>
+
+            <style>
+                html,
+                body {
+                    margin: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #111;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: auto;
+                }
+
+                img {
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
+                    image-rendering: pixelated;
+                }
+            </style>
+        </head>
+
+        <body>
+            <img
+                src="${imageURL}"
+                alt="${title}"
+            >
+        </body>
+        </html>
+    `);
+
+    newTab.document.close();
+}
+
+// ==================================================
+// OPEN DISPLACEMENT MAP
+// ==================================================
+
+function openDisplacementMap() {
+
+    const canvas =
+        chunkManager.generateDisplacementMap(
+            0,
+            0,
+            1024
+        );
+
+
+    if (!canvas) {
+
+        console.warn(
+            "Cannot generate displacement map."
+        );
+
+        return;
+
+    }
+
+
+    openMapInNewTab(
+        canvas,
+        "Terrain Displacement Map"
+    );
+
+}
+
+
+// ==================================================
+// OPEN SURFACE MAP
+// ==================================================
+
+function openSurfaceMap() {
+
+    const canvas =
+        chunkManager.generateSurfaceMap(
+            0,
+            0,
+            1024
+        );
+
+
+    if (!canvas) {
+
+        console.warn(
+            "Cannot generate surface map."
+        );
+
+        return;
+
+    }
+
+
+    openMapInNewTab(
+        canvas,
+        "Terrain Surface Map"
+    );
+
+}
+window.openDisplacementMap =
+    openDisplacementMap;
+
+window.openSurfaceMap =
+    openSurfaceMap;
 // ==================================================
 // SCENE
 // ==================================================
@@ -44,8 +181,8 @@ const scene =
 scene.fog =
     new THREE.Fog(
         0x8fb9d4,
-        5,
-        32
+        32,
+        128
     );
 
 
@@ -57,54 +194,35 @@ const textureLoader =
     new THREE.TextureLoader();
 
 
-// ==================================================
-// SKY
-// ==================================================
+// =========================================
+// SKY SPHERE
+// =========================================
 
-const skyTexture =
-    textureLoader.load(
-        "./textures/skybox9_hd.png"
-    );
-
-skyTexture.offset.y =
-    -0.07;
-
-
-const skyGeometry =
-    new THREE.SphereGeometry(
-        250,
-        64,
-        64
-    );
-
-
-const skyMaterial =
-    new THREE.MeshBasicMaterial({
-
-        map:
-            skyTexture,
-
-        side:
-            THREE.BackSide,
-
-        fog:
-            false
-
-    });
-
-
-const skybox =
-    new THREE.Mesh(
-        skyGeometry,
-        skyMaterial
-    );
-
-
-scene.add(
-    skybox
+const skyTexture = new THREE.TextureLoader().load(
+    "./textures/mySkyTest.png"
 );
 
+skyTexture.colorSpace = THREE.SRGBColorSpace;
+skyTexture.offset.y =- 0.07;
+const skyGeometry = new THREE.SphereGeometry(
+    10000,
+    64,
+    32
+);
 
+const skyMaterial = new THREE.MeshBasicMaterial({
+    map: skyTexture,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog:false
+});
+
+const skySphere = new THREE.Mesh(
+    skyGeometry,
+    skyMaterial
+);
+
+scene.add(skySphere);
 // ==================================================
 // CAMERA
 // ==================================================
@@ -112,14 +230,14 @@ scene.add(
 const camera =
     new THREE.PerspectiveCamera(
 
-        60,
+        75,
 
         window.innerWidth /
         window.innerHeight,
 
         0.1,
 
-        500
+        20000
 
     );
 
@@ -173,10 +291,27 @@ renderer.toneMappingExposure =
     1.25;
 
 
+renderer.shadowMap.enabled =
+    true;
+
+renderer.shadowMap.type =
+    THREE.PCFSoftShadowMap;
+
+
 document.body.appendChild(
     renderer.domElement
 );
 
+const stats = new Stats();
+
+stats.showPanel(0); // 0 = FPS, 1 = MS, 2 = memory
+
+stats.dom.style.position = "fixed";
+stats.dom.style.left = "0px";
+stats.dom.style.top = "0px";
+stats.dom.style.zIndex = "9999";
+
+document.body.appendChild(stats.dom);
 
 // ==================================================
 // LIGHTING
@@ -296,40 +431,60 @@ godRaysPass.uniforms
 
 
 // ==================================================
-// TERRAIN
+// CHUNK MANAGER
 // ==================================================
 
-const terrain =
-    new TerrainSystem({
+/*
+ * The terrain is now divided into chunks.
+ *
+ * 64 × 64 world-unit chunks
+ * 32 × 32 terrain subdivisions
+ *
+ * viewDistance = 1
+ *
+ * means:
+ *
+ *       [-1] [ 0] [ 1]
+ *       [-1] [ 0] [ 1]
+ *       [-1] [ 0] [ 1]
+ *
+ * 9 chunks around the player.
+ */
 
-        scene,
+// let chunkManager;
 
-        size: 115,
-
-        resolution: 150,
-
-        baseHeight: 0.0,
-
-        maxHeight: 4.0,
-
-        seed: 482917
-
-    });
-
-const terrainDebug =
-    new TerrainDebug({
-
-        scene,
-
-        terrain
-
-    });
 
 // ==================================================
 // FIRST PERSON CONTROLLER
 // ==================================================
 
-const fpsController =
+let fpsController;
+
+
+// ==================================================
+// TEMPORARY TERRAIN HEIGHT FUNCTION
+// ==================================================
+
+/*
+ * We need the player controller before the
+ * ChunkManager can use the player's position.
+ *
+ * Therefore we create the controller first with
+ * a temporary height function.
+ *
+ * This gets replaced immediately after the
+ * ChunkManager is created.
+ */
+
+const fallbackTerrainHeight =
+    () => 0;
+
+
+// ==================================================
+// PLAYER
+// ==================================================
+
+fpsController =
     new FirstPersonController({
 
         camera,
@@ -340,9 +495,7 @@ const fpsController =
         scene,
 
         terrainHeightFunction:
-            terrain.getHeight.bind(
-                terrain
-            ),
+            fallbackTerrainHeight,
 
         movementSpeed: 5,
 
@@ -358,7 +511,111 @@ const fpsController =
 
     });
 
+const grassSystem =
+    new GrassSystem({
 
+        density: 120000,
+
+        seed: 482917,
+
+        lodNear: 32,
+
+        lodMedium: 64,
+
+        lodFar: 100
+
+    });
+
+scene.add(
+    grassSystem
+);
+
+const surfaceSystem = new SurfaceSystem({
+    seed: 482917
+});
+
+const chunkManager =
+    new ChunkManager({
+
+        scene,
+
+        player:
+            fpsController,
+
+        grassSystem,
+
+        chunkSize: 64,
+
+        viewDistance: 3,
+
+        baseHeight: 0,
+
+        maxHeight: 14.2,
+
+        seed: 482917,
+
+        surfaceSystem
+
+    });
+
+// ==================================================
+// CONNECT PLAYER TO CHUNK TERRAIN
+// ==================================================
+
+/*
+ * The controller needs to query terrain height.
+ *
+ * ChunkManager now handles that.
+ *
+ * IMPORTANT:
+ *
+ * FirstPersonController must expose a way to
+ * replace terrainHeightFunction.
+ */
+
+fpsController.terrainHeightFunction =
+    chunkManager.getHeight.bind(
+        chunkManager
+    );
+
+    const displacementCanvas =
+    chunkManager.generateDisplacementMap(
+        0,
+        0,
+        512
+    );
+
+const surfaceCanvas =
+    chunkManager.generateSurfaceMap(
+        0,
+        0,
+        512
+    );
+// ==================================================
+// DEBUG MAP VIEWERS
+// ==================================================
+
+const debugTerrain =
+    chunkManager.getChunk(
+        0,
+        0
+    );
+
+if (debugTerrain) {
+
+    const displacementCanvas =
+        debugTerrain.terrain
+            .generateDisplacementMap(
+                512
+            );
+
+    const surfaceCanvas =
+        debugTerrain.terrain
+            .generateSurfaceMap(
+                512
+            );
+
+}
 // ==================================================
 // CAMERA MODE
 // ==================================================
@@ -435,10 +692,8 @@ window.addEventListener(
         else {
 
             if (
-
                 document.pointerLockElement ===
                 renderer.domElement
-
             ) {
 
                 document.exitPointerLock();
@@ -481,6 +736,53 @@ const clock =
 
 
 // ==================================================
+// CHUNK DEBUG
+// ==================================================
+
+let lastChunkX = null;
+let lastChunkZ = null;
+
+
+function updateChunkDebug() {
+
+    const position =
+        fpsController.getPosition();
+
+
+    const chunkX =
+        Math.floor(
+            position.x / 64
+        );
+
+
+    const chunkZ =
+        Math.floor(
+            position.z / 64
+        );
+
+
+    if (
+        chunkX !== lastChunkX ||
+        chunkZ !== lastChunkZ
+    ) {
+
+        lastChunkX =
+            chunkX;
+
+        lastChunkZ =
+            chunkZ;
+
+
+        console.log(
+            `Player Chunk: ${chunkX}, ${chunkZ}`
+        );
+
+    }
+
+}
+
+
+// ==================================================
 // GOD RAY SUN POSITION
 // ==================================================
 
@@ -519,34 +821,33 @@ function updateGodRaySunPosition() {
         sunY < 1.25;
 
 
-    if (
-        inFront &&
-        onScreen
-    ) {
+if (
+    inFront &&
+    onScreen
+) {
 
-        godRaysPass.uniforms
-            .sunPosition
-            .value.set(
-                sunX,
-                sunY
-            );
+    godRaysPass.uniforms
+        .sunPosition
+        .value.set(
+            sunX,
+            sunY
+        );
 
+    godRaysPass.uniforms
+        .intensity
+        .value =
+        1.0;
 
-        godRaysPass.uniforms
-            .intensity
-            .value =
-            1.0;
+}
 
-    }
+else {
 
-    else {
+    godRaysPass.uniforms
+        .intensity
+        .value =
+        0.0;
 
-        godRaysPass.uniforms
-            .intensity
-            .value =
-            0.0;
-
-    }
+}
 
 }
 
@@ -560,7 +861,7 @@ function animate() {
     requestAnimationFrame(
         animate
     );
-
+    stats.begin();
 
     const delta =
         clock.getDelta();
@@ -573,6 +874,20 @@ function animate() {
     fpsController.update(
         delta
     );
+
+
+    // ==============================================
+    // CHUNKS
+    // ==============================================
+
+
+    chunkManager.update();
+
+    grassSystem.update(
+        delta,
+        fpsController.getPosition()
+    );
+    updateChunkDebug();
 
 
     // ==============================================
@@ -599,7 +914,9 @@ function animate() {
         controls.target.set(
 
             playerPosition.x,
+
             playerPosition.y,
+
             playerPosition.z
 
         );
@@ -622,6 +939,8 @@ function animate() {
     // ==============================================
 
     composer.render();
+
+    stats.end();
 
 }
 

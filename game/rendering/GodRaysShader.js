@@ -167,12 +167,12 @@ const GodRaysShader = {
                  * to the light shafts.
                  */
 
-                float bright =
-                    smoothstep(
-                        0.65,
-                        1.0,
-                        brightness
-                    );
+float bright =
+    smoothstep(
+        0.58,
+        0.95,
+        brightness
+    );
 
 
                 ray +=

@@ -1,15 +1,19 @@
 import * as THREE from "three";
 import { TerrainShader } from "../shaders/TerrainShader.js";
+import { SurfaceSystem } from "./SurfaceSystem.js";
 
 export class TerrainSystem {
 
     constructor({
         scene,
-        size = 115,
-        resolution = 150,
+        size = 64,
+        resolution = 64,
         baseHeight = 0.0,
-        maxHeight = 1.5,
-        seed = 482917
+        maxHeight = 2.2,
+        seed = 482917,
+        worldOffsetX = 0,
+        worldOffsetZ = 0,
+        surfaceSystem = null
     }) {
 
         this.scene = scene;
@@ -17,61 +21,79 @@ export class TerrainSystem {
         this.size = size;
         this.resolution = resolution;
 
-        /*
-         * Absolute vertical limits for this biome.
-         *
-         * BASE:
-         * lowest possible terrain
-         *
-         * MAX:
-         * highest possible terrain
-         */
         this.baseHeight = baseHeight;
         this.maxHeight = maxHeight;
 
         this.seed = seed;
 
+        this.worldOffsetX = worldOffsetX;
+        this.worldOffsetZ = worldOffsetZ;
+        this.surfaceSystem =
+            surfaceSystem ||
+            new SurfaceSystem({
+                seed: this.seed
+            });
+
         this.geometry = null;
-        this.material = new THREE.ShaderMaterial({
 
-    uniforms:
-        THREE.UniformsUtils.clone(
-            TerrainShader.uniforms
-        ),
+        this.material = null;
 
-    vertexShader:
-        TerrainShader.vertexShader,
-
-    fragmentShader:
-        TerrainShader.fragmentShader,
-
-    side:
-        THREE.DoubleSide,
-
-    fog:
-        false
-});
-
-this.material.uniforms.minHeight.value =
-    this.baseHeight;
-
-this.material.uniforms.maxHeight.value =
-    this.maxHeight;
         this.mesh = null;
+
+        this.skirtGeometry = null;
+
+        this.skirtMesh = null;
+
 
         this.hills = [];
 
-        /*
-         * Generate the broad geographical
-         * formations first.
-         */
+
+        this.fieldMin = 0.0;
+
+        this.fieldMax = 1.0;
+
+        this.fieldRange = 1.0;
+
+
+        // ==================================================
+        // MATERIAL
+        // ==================================================
+
+        this.material =
+            new THREE.ShaderMaterial({
+
+                uniforms:
+                    THREE.UniformsUtils.clone(
+                        TerrainShader.uniforms
+                    ),
+
+                vertexShader:
+                    TerrainShader.vertexShader,
+
+                fragmentShader:
+                    TerrainShader.fragmentShader,
+
+                side:
+                    THREE.DoubleSide,
+
+                fog:
+                    false
+            });
+
+
+        this.material.uniforms.minHeight.value =
+            this.baseHeight;
+
+        this.material.uniforms.maxHeight.value =
+            this.maxHeight;
+
+
+        // ==================================================
+        // TERRAIN
+        // ==================================================
+
         this.generateHillField();
 
-        /*
-         * Find the raw terrain range so that
-         * the generated geography can be mapped
-         * cleanly between BASE and MAX.
-         */
         this.calculateFieldRange();
 
         this.generate();
@@ -91,6 +113,7 @@ this.material.uniforms.maxHeight.value =
             ) *
             43758.5453123;
 
+
         return (
             x -
             Math.floor(x)
@@ -99,115 +122,29 @@ this.material.uniforms.maxHeight.value =
 
 
     // ==================================================
-    // GENERATE BROAD TERRAIN FORMATIONS
+    // 2D SEEDED RANDOM
     // ==================================================
 
-    generateHillField() {
+    hash2D(x, z) {
 
-        this.hills = [];
-
-        /*
-         * Fewer formations produce the large,
-         * open geographical shapes we want.
-         */
-        const hillCount = 9;
-
-        const halfSize =
-            this.size * 0.5;
+        const value =
+            Math.sin(
+                x * 127.1 +
+                z * 311.7 +
+                this.seed * 74.7
+            ) *
+            43758.5453123;
 
 
-        for (
-            let i = 0;
-            i < hillCount;
-            i++
-        ) {
-
-            const randomX =
-                this.hash(
-                    i * 17.31 + 1.7
-                );
-
-            const randomZ =
-                this.hash(
-                    i * 31.73 + 8.2
-                );
-
-            const randomStrength =
-                this.hash(
-                    i * 47.91 + 15.4
-                );
-
-            const randomWidth =
-                this.hash(
-                    i * 63.17 + 22.8
-                );
-
-
-            /*
-             * Allow formations to extend slightly
-             * outside the playable terrain.
-             *
-             * This avoids obvious edges.
-             */
-            const x =
-                THREE.MathUtils.lerp(
-                    -halfSize * 1.15,
-                    halfSize * 1.15,
-                    randomX
-                );
-
-
-            const z =
-                THREE.MathUtils.lerp(
-                    -halfSize * 1.15,
-                    halfSize * 1.15,
-                    randomZ
-                );
-
-
-            /*
-             * This is the relative height of
-             * this geographical formation.
-             *
-             * It is NOT the final world height.
-             */
-            const strength =
-                THREE.MathUtils.lerp(
-                    0.35,
-                    1.0,
-                    randomStrength
-                );
-
-
-            /*
-             * Very broad horizontal formations.
-             *
-             * Large radius = long gentle slopes.
-             */
-            const radius =
-                THREE.MathUtils.lerp(
-                    24.0,
-                    46.0,
-                    randomWidth
-                );
-
-
-            this.hills.push({
-
-                x,
-                z,
-
-                strength,
-
-                radius
-
-            });
-        }
+        return (
+            value -
+            Math.floor(value)
+        );
     }
 
 
     // ==================================================
-    // SMOOTH NOISE
+    // SMOOTH
     // ==================================================
 
     smooth(t) {
@@ -220,22 +157,9 @@ this.material.uniforms.maxHeight.value =
     }
 
 
-    hash2D(x, z) {
-
-        const value =
-            Math.sin(
-                x * 127.1 +
-                z * 311.7 +
-                this.seed * 74.7
-            ) *
-            43758.5453123;
-
-        return (
-            value -
-            Math.floor(value)
-        );
-    }
-
+    // ==================================================
+    // VALUE NOISE
+    // ==================================================
 
     valueNoise(x, z) {
 
@@ -312,7 +236,7 @@ this.material.uniforms.maxHeight.value =
 
 
     // ==================================================
-    // BELL CURVE
+    // GAUSSIAN
     // ==================================================
 
     gaussian(
@@ -325,12 +249,6 @@ this.material.uniforms.maxHeight.value =
             radius;
 
 
-        /*
-         * Broad Gaussian curve.
-         *
-         * The lower the exponent,
-         * the wider the hill.
-         */
         return Math.exp(
             -normalized *
             normalized *
@@ -340,31 +258,147 @@ this.material.uniforms.maxHeight.value =
 
 
     // ==================================================
+    // GENERATE WORLD-SPACE HILLS
+    // ==================================================
+
+    generateHillField() {
+
+        this.hills = [];
+
+
+        const regionSize = 100;
+
+
+        const currentRegionX =
+            Math.floor(
+                this.worldOffsetX /
+                regionSize
+            );
+
+        const currentRegionZ =
+            Math.floor(
+                this.worldOffsetZ /
+                regionSize
+            );
+
+
+        const regionRange = 2;
+
+
+        for (
+            let rz = -regionRange;
+            rz <= regionRange;
+            rz++
+        ) {
+
+            for (
+                let rx = -regionRange;
+                rx <= regionRange;
+                rx++
+            ) {
+
+                const regionX =
+                    currentRegionX + rx;
+
+                const regionZ =
+                    currentRegionZ + rz;
+
+
+                const randomX =
+                    this.hash2D(
+                        regionX * 13.17 + 17.31,
+                        regionZ * 19.73 + 1.7
+                    );
+
+
+                const randomZ =
+                    this.hash2D(
+                        regionX * 23.91 + 31.73,
+                        regionZ * 29.17 + 8.2
+                    );
+
+
+                const randomStrength =
+                    this.hash2D(
+                        regionX * 37.91 + 47.91,
+                        regionZ * 41.27 + 15.4
+                    );
+
+
+                const randomWidth =
+                    this.hash2D(
+                        regionX * 53.17 + 63.17,
+                        regionZ * 59.83 + 22.8
+                    );
+
+
+                const centerX =
+                    regionX *
+                    regionSize;
+
+
+                const centerZ =
+                    regionZ *
+                    regionSize;
+
+
+                const x =
+                    centerX +
+                    THREE.MathUtils.lerp(
+                        -regionSize * 0.42,
+                        regionSize * 0.42,
+                        randomX
+                    );
+
+
+                const z =
+                    centerZ +
+                    THREE.MathUtils.lerp(
+                        -regionSize * 0.42,
+                        regionSize * 0.42,
+                        randomZ
+                    );
+
+
+                const strength =
+                    THREE.MathUtils.lerp(
+                        0.35,
+                        1.0,
+                        randomStrength
+                    );
+
+
+                const radius =
+                    THREE.MathUtils.lerp(
+                        24.0,
+                        46.0,
+                        randomWidth
+                    );
+
+
+                this.hills.push({
+
+                    x,
+
+                    z,
+
+                    strength,
+
+                    radius
+
+                });
+            }
+        }
+    }
+
+
+    // ==================================================
     // RAW TERRAIN FIELD
     // ==================================================
 
     getRawField(x, z) {
 
-        /*
-         * We use a smooth power combination
-         * instead of adding hills together.
-         *
-         * This is important:
-         *
-         * hill + hill + hill
-         *
-         * is what previously caused the terrain
-         * to become too tall.
-         *
-         * A power combination behaves more like
-         * a smooth maximum:
-         *
-         *      /\          /\
-         * ____/  \________/  \____
-         */
-
         let poweredSum = 0;
-
 
         const combinationPower = 4.0;
 
@@ -374,10 +408,12 @@ this.material.uniforms.maxHeight.value =
         ) {
 
             const dx =
-                x - hill.x;
+                x -
+                hill.x;
 
             const dz =
-                z - hill.z;
+                z -
+                hill.z;
 
 
             const distance =
@@ -385,6 +421,15 @@ this.material.uniforms.maxHeight.value =
                     dx * dx +
                     dz * dz
                 );
+
+
+            if (
+                distance >
+                hill.radius * 2.5
+            ) {
+
+                continue;
+            }
 
 
             const influence =
@@ -407,15 +452,6 @@ this.material.uniforms.maxHeight.value =
         }
 
 
-        /*
-         * Convert the power sum back into
-         * normal scale.
-         *
-         * This approximates the strongest
-         * nearby formation without allowing
-         * simple addition to create huge hills.
-         */
-
         let field =
             Math.pow(
                 poweredSum,
@@ -424,10 +460,6 @@ this.material.uniforms.maxHeight.value =
             );
 
 
-        // ==================================================
-        // VERY LOW-FREQUENCY GEOGRAPHICAL VARIATION
-        // ==================================================
-
         const broadNoise =
             this.valueNoise(
                 x * 0.012,
@@ -435,119 +467,40 @@ this.material.uniforms.maxHeight.value =
             );
 
 
-        /*
-         * Only a small influence.
-         *
-         * This keeps the terrain organic without
-         * creating visible bumps.
-         */
-
         field =
             field * 0.94 +
             broadNoise * 0.06;
 
 
-        return field;
+        return THREE.MathUtils.clamp(
+            field,
+            0.0,
+            1.0
+        );
     }
 
 
     // ==================================================
-    // CALCULATE FIELD RANGE
+    // FIELD RANGE
     // ==================================================
 
     calculateFieldRange() {
 
         /*
-         * Sample the actual terrain field over
-         * the terrain area.
+         * IMPORTANT:
          *
-         * This lets us normalize the generated
-         * geography into the exact BASE → MAX
-         * range.
+         * Do not calculate an independent range for
+         * every chunk.
+         *
+         * Every chunk uses the same world-space
+         * normalization.
          */
 
-        const samples = 80;
+        this.fieldMin = 0.0;
 
-        const halfSize =
-            this.size * 0.5;
+        this.fieldMax = 1.0;
 
-
-        let minField =
-            Infinity;
-
-        let maxField =
-            -Infinity;
-
-
-        for (
-            let zIndex = 0;
-            zIndex <= samples;
-            zIndex++
-        ) {
-
-            const z =
-                THREE.MathUtils.lerp(
-                    -halfSize,
-                    halfSize,
-                    zIndex / samples
-                );
-
-
-            for (
-                let xIndex = 0;
-                xIndex <= samples;
-                xIndex++
-            ) {
-
-                const x =
-                    THREE.MathUtils.lerp(
-                        -halfSize,
-                        halfSize,
-                        xIndex / samples
-                    );
-
-
-                const field =
-                    this.getRawField(
-                        x,
-                        z
-                    );
-
-
-                minField =
-                    Math.min(
-                        minField,
-                        field
-                    );
-
-
-                maxField =
-                    Math.max(
-                        maxField,
-                        field
-                    );
-            }
-        }
-
-
-        this.fieldMin =
-            minField;
-
-        this.fieldMax =
-            maxField;
-
-
-        /*
-         * Avoid division by zero in the
-         * extremely unlikely case that the
-         * entire field is identical.
-         */
-        this.fieldRange =
-            Math.max(
-                this.fieldMax -
-                this.fieldMin,
-                0.000001
-            );
+        this.fieldRange = 1.0;
     }
 
 
@@ -563,11 +516,6 @@ this.material.uniforms.maxHeight.value =
                 z
             );
 
-
-        /*
-         * Normalize geographical field
-         * into 0 → 1.
-         */
 
         let normalized =
             (
@@ -585,25 +533,12 @@ this.material.uniforms.maxHeight.value =
             );
 
 
-        /*
-         * Slightly compress the upper part.
-         *
-         * This gives us broad plains with
-         * relatively few locations reaching
-         * the absolute maximum.
-         */
-
         normalized =
             Math.pow(
                 normalized,
                 1.15
             );
 
-
-        /*
-         * Convert normalized geography
-         * into the absolute terrain range.
-         */
 
         return THREE.MathUtils.lerp(
             this.baseHeight,
@@ -619,11 +554,6 @@ this.material.uniforms.maxHeight.value =
 
     getNormal(x, z) {
 
-        /*
-         * Sample around the requested point
-         * and estimate the surface gradient.
-         */
-
         const epsilon = 0.5;
 
 
@@ -633,17 +563,20 @@ this.material.uniforms.maxHeight.value =
                 z
             );
 
+
         const heightRight =
             this.getHeight(
                 x + epsilon,
                 z
             );
 
+
         const heightBack =
             this.getHeight(
                 x,
                 z - epsilon
             );
+
 
         const heightForward =
             this.getHeight(
@@ -656,6 +589,7 @@ this.material.uniforms.maxHeight.value =
             heightRight -
             heightLeft;
 
+
         const dz =
             heightForward -
             heightBack;
@@ -663,8 +597,11 @@ this.material.uniforms.maxHeight.value =
 
         const normal =
             new THREE.Vector3(
+
                 -dx,
+
                 epsilon * 2.0,
+
                 -dz
             );
 
@@ -688,12 +625,6 @@ this.material.uniforms.maxHeight.value =
                 z
             );
 
-
-        /*
-         * 0 radians = flat
-         *
-         * PI / 2 = vertical
-         */
 
         return Math.acos(
             THREE.MathUtils.clamp(
@@ -754,33 +685,229 @@ this.material.uniforms.maxHeight.value =
         };
     }
 
+    // ==================================================
+    // TERRAIN HEIGHT GRID
+    // ==================================================
+    //
+    // Creates the height data used by GrassWorker.
+    //
+    // The grid is LOCAL to this terrain chunk:
+    //
+    //     -size/2 ---------------- +size/2
+    //          terrain chunk
+    //
+    // This means the grass worker can use the same
+    // local coordinates as the terrain mesh.
+    //
+
+    getHeightGrid() {
+
+        const gridResolution =
+            this.resolution + 1;
+
+        const grid =
+            new Float32Array(
+                gridResolution *
+                gridResolution
+            );
+
+        const halfSize =
+            this.size * 0.5;
+
+        const step =
+            this.size /
+            this.resolution;
+
+
+        for (
+            let z = 0;
+            z < gridResolution;
+            z++
+        ) {
+
+            const localZ =
+                -halfSize +
+                z * step;
+
+
+            for (
+                let x = 0;
+                x < gridResolution;
+                x++
+            ) {
+
+                const localX =
+                    -halfSize +
+                    x * step;
+
+
+                /*
+                 * getHeight() operates in the same
+                 * world-space coordinate system used
+                 * by the terrain generation.
+                 *
+                 * The terrain chunk's world offset is
+                 * therefore added here.
+                 */
+
+                const worldX =
+                    localX +
+                    this.worldOffsetX;
+
+                const worldZ =
+                    localZ +
+                    this.worldOffsetZ;
+
+
+                grid[
+                    z *
+                    gridResolution +
+                    x
+                ] =
+                    this.getHeight(
+                        worldX,
+                        worldZ
+                    );
+            }
+        }
+
+
+        return {
+            data:
+                grid,
+
+            resolution:
+                gridResolution,
+
+            size:
+                this.size
+        };
+    }
 
     // ==================================================
-    // GENERATE TERRAIN MESH
+    // GENERATE
     // ==================================================
 
     generate() {
 
+        // --------------------------------------------------
+        // MAIN TERRAIN GEOMETRY
+        // --------------------------------------------------
+
         this.geometry =
             new THREE.PlaneGeometry(
+
                 this.size,
+
                 this.size,
+
                 this.resolution,
+
                 this.resolution
+
             );
 
-
-        /*
-         * Convert plane into X/Z terrain.
-         */
 
         this.geometry.rotateX(
             -Math.PI / 2
         );
 
 
+        // --------------------------------------------------
+        // HEIGHT
+        // --------------------------------------------------
+
         const position =
             this.geometry.attributes.position;
+
+        const colors = [];
+
+
+        // --------------------------------------------------
+        // HEIGHT + SURFACE
+        // --------------------------------------------------
+
+        for (
+            let i = 0;
+            i < position.count;
+            i++
+        ) {
+
+            const localX =
+                position.getX(i);
+
+            const localZ =
+                position.getZ(i);
+
+
+            const worldX =
+                localX +
+                this.worldOffsetX;
+
+            const worldZ =
+                localZ +
+                this.worldOffsetZ;
+
+
+            const y =
+                this.getHeight(
+                    worldX,
+                    worldZ
+                );
+
+
+            position.setY(
+                i,
+                y
+            );
+
+
+            // --------------------------------------------------
+            // SURFACE DEBUG COLOR
+            // --------------------------------------------------
+
+            const surfaceColor =
+                this.surfaceSystem.getSurfaceColor(
+                    worldX,
+                    worldZ,
+                    this
+                );
+
+
+            colors.push(
+                surfaceColor.r,
+                surfaceColor.g,
+                surfaceColor.b
+            );
+        }
+
+
+        position.needsUpdate = true;
+
+        this.geometry.setAttribute(
+            "color",
+            new THREE.Float32BufferAttribute(
+                colors,
+                3
+            )
+        );
+        position.needsUpdate =
+            true;
+
+
+        // --------------------------------------------------
+        // WORLD-SPACE NORMALS
+        // --------------------------------------------------
+
+        const normalAttribute =
+            new THREE.BufferAttribute(
+
+                new Float32Array(
+                    position.count * 3
+                ),
+
+                3
+            );
 
 
         for (
@@ -789,58 +916,53 @@ this.material.uniforms.maxHeight.value =
             i++
         ) {
 
-            const x =
+            const localX =
                 position.getX(i);
 
-            const z =
+            const localZ =
                 position.getZ(i);
 
 
-            const y =
-                this.getHeight(
-                    x,
-                    z
+            const worldX =
+                localX +
+                this.worldOffsetX;
+
+
+            const worldZ =
+                localZ +
+                this.worldOffsetZ;
+
+
+            const normal =
+                this.getNormal(
+                    worldX,
+                    worldZ
                 );
 
 
-            position.setY(
+            normalAttribute.setXYZ(
+
                 i,
-                y
+
+                normal.x,
+
+                normal.y,
+
+                normal.z
+
             );
         }
 
 
-        position.needsUpdate = true;
+        this.geometry.setAttribute(
+            "normal",
+            normalAttribute
+        );
 
 
-        /*
-         * Generate smooth normals.
-         */
-
-        this.geometry.computeVertexNormals();
-
-
-        // // ==================================================
-        // // MATERIAL
-        // // ==================================================
-
-        // this.material =
-        //     new THREE.MeshStandardMaterial({
-
-        //         color: 0xb5e06f,
-
-        //         roughness: 0.95,
-
-        //         metalness: 0.0,
-
-        //         side: THREE.DoubleSide
-
-        //     });
-
-
-        // ==================================================
-        // MESH
-        // ==================================================
+        // --------------------------------------------------
+        // MAIN MESH
+        // --------------------------------------------------
 
         this.mesh =
             new THREE.Mesh(
@@ -849,12 +971,24 @@ this.material.uniforms.maxHeight.value =
             );
 
 
+        this.mesh.position.set(
+
+            this.worldOffsetX,
+
+            0,
+
+            this.worldOffsetZ
+
+        );
+
+
         this.mesh.name =
-            "ProceduralTerrain";
+            `TerrainChunk_${this.worldOffsetX}_${this.worldOffsetZ}`;
 
 
         this.mesh.receiveShadow =
             true;
+
 
         this.mesh.castShadow =
             false;
@@ -863,16 +997,1006 @@ this.material.uniforms.maxHeight.value =
         this.scene.add(
             this.mesh
         );
+
+
+        // --------------------------------------------------
+        // LOD SKIRT
+        // --------------------------------------------------
+
+        this.generateSkirt();
     }
 
 
+    // ==================================================
+    // GENERATE LOD SKIRT
+    // ==================================================
+
+    generateSkirt() {
+
+        /*
+         * The skirt extends downward from the chunk
+         * boundary.
+         *
+         * It is intentionally small.
+         */
+
+        const skirtDepth = 1.0;
+
+
+        const halfSize =
+            this.size * 0.5;
+
+
+        const segments =
+            this.resolution;
+
+
+        const vertices = [];
+
+        const normals = [];
+
+        const indices = [];
+
+
+        // ==================================================
+        // EDGE BUILDER
+        // ==================================================
+
+        const addEdge =
+            (
+                startX,
+                startZ,
+                endX,
+                endZ
+            ) => {
+
+                const startIndex =
+                    vertices.length / 3;
+
+
+                for (
+                    let i = 0;
+                    i <= segments;
+                    i++
+                ) {
+
+                    const t =
+                        i /
+                        segments;
+
+
+                    const localX =
+                        THREE.MathUtils.lerp(
+                            startX,
+                            endX,
+                            t
+                        );
+
+
+                    const localZ =
+                        THREE.MathUtils.lerp(
+                            startZ,
+                            endZ,
+                            t
+                        );
+
+
+                    const worldX =
+                        localX +
+                        this.worldOffsetX;
+
+
+                    const worldZ =
+                        localZ +
+                        this.worldOffsetZ;
+
+
+                    const y =
+                        this.getHeight(
+                            worldX,
+                            worldZ
+                        );
+
+
+                    const normal =
+                        this.getNormal(
+                            worldX,
+                            worldZ
+                        );
+
+
+                    // TOP
+                    vertices.push(
+                        localX,
+                        y,
+                        localZ
+                    );
+
+
+                    normals.push(
+                        normal.x,
+                        normal.y,
+                        normal.z
+                    );
+
+
+                    // BOTTOM
+                    vertices.push(
+                        localX,
+                        y - skirtDepth,
+                        localZ
+                    );
+
+
+                    normals.push(
+                        normal.x,
+                        normal.y,
+                        normal.z
+                    );
+                }
+
+
+                for (
+                    let i = 0;
+                    i < segments;
+                    i++
+                ) {
+
+                    const topA =
+                        startIndex +
+                        i * 2;
+
+                    const bottomA =
+                        topA + 1;
+
+                    const topB =
+                        startIndex +
+                        (i + 1) * 2;
+
+                    const bottomB =
+                        topB + 1;
+
+
+                    /*
+                     * Two triangles.
+                     */
+
+                    indices.push(
+
+                        topA,
+                        bottomA,
+                        topB,
+
+                        topB,
+                        bottomA,
+                        bottomB
+
+                    );
+                }
+            };
+
+
+        // ==================================================
+        // NORTH
+        // ==================================================
+
+        addEdge(
+
+            -halfSize,
+
+            -halfSize,
+
+            halfSize,
+
+            -halfSize
+
+        );
+
+
+        // ==================================================
+        // EAST
+        // ==================================================
+
+        addEdge(
+
+            halfSize,
+
+            -halfSize,
+
+            halfSize,
+
+            halfSize
+
+        );
+
+
+        // ==================================================
+        // SOUTH
+        // ==================================================
+
+        addEdge(
+
+            halfSize,
+
+            halfSize,
+
+            -halfSize,
+
+            halfSize
+
+        );
+
+
+        // ==================================================
+        // WEST
+        // ==================================================
+
+        addEdge(
+
+            -halfSize,
+
+            halfSize,
+
+            -halfSize,
+
+            -halfSize
+
+        );
+
+
+        // ==================================================
+        // CREATE GEOMETRY
+        // ==================================================
+
+        this.skirtGeometry =
+            new THREE.BufferGeometry();
+
+
+        this.skirtGeometry.setAttribute(
+
+            "position",
+
+            new THREE.Float32BufferAttribute(
+
+                vertices,
+
+                3
+
+            )
+
+        );
+
+
+        this.skirtGeometry.setAttribute(
+
+            "normal",
+
+            new THREE.Float32BufferAttribute(
+
+                normals,
+
+                3
+
+            )
+
+        );
+
+
+        this.skirtGeometry.setIndex(
+            indices
+        );
+
+
+        // --------------------------------------------------
+        // SKIRT MESH
+        // --------------------------------------------------
+
+        this.skirtMesh =
+            new THREE.Mesh(
+
+                this.skirtGeometry,
+
+                this.material
+
+            );
+
+
+        this.skirtMesh.position.set(
+
+            this.worldOffsetX,
+
+            0,
+
+            this.worldOffsetZ
+
+        );
+
+
+        this.skirtMesh.name =
+            `TerrainSkirt_${this.worldOffsetX}_${this.worldOffsetZ}`;
+
+
+        this.skirtMesh.receiveShadow =
+            true;
+
+
+        this.skirtMesh.castShadow =
+            false;
+
+
+        this.scene.add(
+            this.skirtMesh
+        );
+    }
+
+
+    // ==================================================
+    // CHANGE RESOLUTION
+    // ==================================================
+
+    setResolution(
+        resolution
+    ) {
+
+        if (
+            this.resolution ===
+            resolution
+        ) {
+
+            return;
+        }
+
+
+        this.resolution =
+            resolution;
+
+
+        // --------------------------------------------------
+        // REMOVE OLD MAIN GEOMETRY
+        // --------------------------------------------------
+
+        if (
+            this.geometry
+        ) {
+
+            this.geometry.dispose();
+
+            this.geometry =
+                null;
+        }
+
+
+        // --------------------------------------------------
+        // REMOVE OLD SKIRT
+        // --------------------------------------------------
+
+        if (
+            this.skirtGeometry
+        ) {
+
+            this.skirtGeometry.dispose();
+
+            this.skirtGeometry =
+                null;
+        }
+
+
+        if (
+            this.skirtMesh
+        ) {
+
+            this.scene.remove(
+                this.skirtMesh
+            );
+
+            this.skirtMesh =
+                null;
+        }
+
+
+        // --------------------------------------------------
+        // REGENERATE
+        // --------------------------------------------------
+
+        this.generate();
+    }
+
+// ==================================================
+// DISPLACEMENT MAP
+// ==================================================
+
+generateDisplacementMap(
+    resolution = 512
+) {
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width =
+        resolution;
+
+    canvas.height =
+        resolution;
+
+    const ctx =
+        canvas.getContext("2d");
+
+    const image =
+        ctx.createImageData(
+            resolution,
+            resolution
+        );
+
+    const data =
+        image.data;
+
+    const range =
+        this.maxHeight -
+        this.baseHeight;
+
+
+    for (
+        let py = 0;
+        py < resolution;
+        py++
+    ) {
+
+        const v =
+            py /
+            (resolution - 1);
+
+        const worldZ =
+            this.worldOffsetZ +
+            (
+                v -
+                0.5
+            ) *
+            this.size;
+
+
+        for (
+            let px = 0;
+            px < resolution;
+            px++
+        ) {
+
+            const u =
+                px /
+                (resolution - 1);
+
+            const worldX =
+                this.worldOffsetX +
+                (
+                    u -
+                    0.5
+                ) *
+                this.size;
+
+
+            const height =
+                this.getHeight(
+                    worldX,
+                    worldZ
+                );
+
+
+            const normalized =
+                THREE.MathUtils.clamp(
+                    (
+                        height -
+                        this.baseHeight
+                    ) /
+                    Math.max(
+                        range,
+                        0.000001
+                    ),
+                    0,
+                    1
+                );
+
+
+            const value =
+                Math.round(
+                    normalized *
+                    255
+                );
+
+
+            const index =
+                (
+                    py *
+                    resolution +
+                    px
+                ) *
+                4;
+
+
+            data[index] =
+                value;
+
+            data[index + 1] =
+                value;
+
+            data[index + 2] =
+                value;
+
+            data[index + 3] =
+                255;
+        }
+    }
+
+
+    ctx.putImageData(
+        image,
+        0,
+        0
+    );
+
+
+    return canvas;
+}
+
+
+// ==================================================
+// SURFACE MAP
+// ==================================================
+
+generateSurfaceMap(
+    resolution = 512
+) {
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width =
+        resolution;
+
+    canvas.height =
+        resolution;
+
+    const ctx =
+        canvas.getContext("2d");
+
+    const image =
+        ctx.createImageData(
+            resolution,
+            resolution
+        );
+
+    const data =
+        image.data;
+
+
+    for (
+        let py = 0;
+        py < resolution;
+        py++
+    ) {
+
+        const v =
+            py /
+            (resolution - 1);
+
+        const worldZ =
+            this.worldOffsetZ +
+            (
+                v -
+                0.5
+            ) *
+            this.size;
+
+
+        for (
+            let px = 0;
+            px < resolution;
+            px++
+        ) {
+
+            const u =
+                px /
+                (resolution - 1);
+
+            const worldX =
+                this.worldOffsetX +
+                (
+                    u -
+                    0.5
+                ) *
+                this.size;
+
+
+            const surface =
+                this.surfaceSystem.getSurface(
+                    worldX,
+                    worldZ,
+                    this
+                );
+
+
+            let r = 0;
+            let g = 0;
+            let b = 0;
+
+
+            switch (
+                surface.type
+            ) {
+
+                case this.surfaceSystem.SURFACE.GRASS:
+
+                    r = 70;
+                    g = 170;
+                    b = 50;
+
+                    break;
+
+
+                case this.surfaceSystem.SURFACE.DIRT:
+
+                    r = 190;
+                    g = 155;
+                    b = 95;
+
+                    break;
+
+
+                case this.surfaceSystem.SURFACE.GRAVEL:
+
+                    r = 145;
+                    g = 140;
+                    b = 125;
+
+                    break;
+
+
+                case this.surfaceSystem.SURFACE.ROCK:
+
+                    r = 75;
+                    g = 78;
+                    b = 80;
+
+                    break;
+            }
+
+
+            const index =
+                (
+                    py *
+                    resolution +
+                    px
+                ) *
+                4;
+
+
+            data[index] =
+                r;
+
+            data[index + 1] =
+                g;
+
+            data[index + 2] =
+                b;
+
+            data[index + 3] =
+                255;
+        }
+    }
+
+
+    ctx.putImageData(
+        image,
+        0,
+        0
+    );
+
+
+    return canvas;
+}
+    // ==================================================
+    // GENERATE DISPLACEMENT MAP
+    // ==================================================
+
+    generateDisplacementMap(
+        resolution = 512
+    ) {
+
+        const canvas =
+            document.createElement("canvas");
+
+        canvas.width =
+            resolution;
+
+        canvas.height =
+            resolution;
+
+
+        const ctx =
+            canvas.getContext("2d");
+
+        const image =
+            ctx.createImageData(
+                resolution,
+                resolution
+            );
+
+        const data =
+            image.data;
+
+
+        const heightRange =
+            Math.max(
+                this.maxHeight -
+                this.baseHeight,
+
+                0.000001
+            );
+
+
+        for (
+            let py = 0;
+            py < resolution;
+            py++
+        ) {
+
+            const v =
+                py /
+                (resolution - 1);
+
+
+            const worldZ =
+                this.worldOffsetZ +
+                (v - 0.5) *
+                this.size;
+
+
+            for (
+                let px = 0;
+                px < resolution;
+                px++
+            ) {
+
+                const u =
+                    px /
+                    (resolution - 1);
+
+
+                const worldX =
+                    this.worldOffsetX +
+                    (u - 0.5) *
+                    this.size;
+
+
+                const height =
+                    this.getHeight(
+                        worldX,
+                        worldZ
+                    );
+
+
+                const normalized =
+                    THREE.MathUtils.clamp(
+
+                        (
+                            height -
+                            this.baseHeight
+                        ) /
+                        heightRange,
+
+                        0,
+                        1
+
+                    );
+
+
+                const value =
+                    Math.round(
+                        normalized * 255
+                    );
+
+
+                const index =
+                    (
+                        py *
+                        resolution +
+                        px
+                    ) * 4;
+
+
+                data[index] =
+                    value;
+
+                data[index + 1] =
+                    value;
+
+                data[index + 2] =
+                    value;
+
+                data[index + 3] =
+                    255;
+
+            }
+
+        }
+
+
+        ctx.putImageData(
+            image,
+            0,
+            0
+        );
+
+
+        return canvas;
+
+    }
+
+
+    // ==================================================
+    // GENERATE SURFACE MAP
+    // ==================================================
+
+    generateSurfaceMap(
+        resolution = 512
+    ) {
+
+        const canvas =
+            document.createElement("canvas");
+
+        canvas.width =
+            resolution;
+
+        canvas.height =
+            resolution;
+
+
+        const ctx =
+            canvas.getContext("2d");
+
+        const image =
+            ctx.createImageData(
+                resolution,
+                resolution
+            );
+
+        const data =
+            image.data;
+
+
+        for (
+            let py = 0;
+            py < resolution;
+            py++
+        ) {
+
+            const v =
+                py /
+                (resolution - 1);
+
+
+            const worldZ =
+                this.worldOffsetZ +
+                (v - 0.5) *
+                this.size;
+
+
+            for (
+                let px = 0;
+                px < resolution;
+                px++
+            ) {
+
+                const u =
+                    px /
+                    (resolution - 1);
+
+
+                const worldX =
+                    this.worldOffsetX +
+                    (u - 0.5) *
+                    this.size;
+
+
+                const surface =
+                    this.surfaceSystem.getSurface(
+
+                        worldX,
+                        worldZ,
+                        this
+
+                    );
+
+
+                let r = 0;
+                let g = 0;
+                let b = 0;
+
+
+                switch (
+                    surface.type
+                ) {
+
+                    case this.surfaceSystem.SURFACE.GRASS:
+
+                        r = 70;
+                        g = 170;
+                        b = 50;
+
+                        break;
+
+
+                    case this.surfaceSystem.SURFACE.DIRT:
+
+                        r = 190;
+                        g = 155;
+                        b = 95;
+
+                        break;
+
+
+                    case this.surfaceSystem.SURFACE.GRAVEL:
+
+                        r = 145;
+                        g = 140;
+                        b = 125;
+
+                        break;
+
+
+                    case this.surfaceSystem.SURFACE.ROCK:
+
+                        r = 75;
+                        g = 78;
+                        b = 80;
+
+                        break;
+
+                }
+
+
+                const index =
+                    (
+                        py *
+                        resolution +
+                        px
+                    ) * 4;
+
+
+                data[index] =
+                    r;
+
+                data[index + 1] =
+                    g;
+
+                data[index + 2] =
+                    b;
+
+                data[index + 3] =
+                    255;
+
+            }
+
+        }
+
+
+        ctx.putImageData(
+            image,
+            0,
+            0
+        );
+
+
+        return canvas;
+
+    }
     // ==================================================
     // CLEANUP
     // ==================================================
 
     dispose() {
 
-        if (this.mesh) {
+        if (
+            this.mesh
+        ) {
 
             this.scene.remove(
                 this.mesh
@@ -880,22 +2004,55 @@ this.material.uniforms.maxHeight.value =
         }
 
 
-        if (this.geometry) {
+        if (
+            this.skirtMesh
+        ) {
+
+            this.scene.remove(
+                this.skirtMesh
+            );
+        }
+
+
+        if (
+            this.geometry
+        ) {
 
             this.geometry.dispose();
         }
 
 
-        if (this.material) {
+        if (
+            this.skirtGeometry
+        ) {
+
+            this.skirtGeometry.dispose();
+        }
+
+
+        if (
+            this.material
+        ) {
 
             this.material.dispose();
         }
 
 
-        this.mesh = null;
+        this.mesh =
+            null;
 
-        this.geometry = null;
+        this.skirtMesh =
+            null;
 
-        this.material = null;
+        this.geometry =
+            null;
+
+        this.skirtGeometry =
+            null;
+
+        this.material =
+            null;
+
+        this.hills = [];
     }
 }
