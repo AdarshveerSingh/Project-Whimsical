@@ -1130,6 +1130,9 @@ function animate() {
     flowerSystem.update(
     delta
 );
+bushSystem.update(
+    delta
+);
     updateChunkDebug();
 
 

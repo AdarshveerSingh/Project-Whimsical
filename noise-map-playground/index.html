@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noise Map Playground</title>
+  <link rel="stylesheet" href="./src/style.css" />
+  <script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">VEGETATION / MATERIAL LAB</div>
+      <h1>Noise Map Playground</h1>
+      <p>Procedural grayscale maps → stylized object shading</p>
+    </div>
+    <div class="top-actions">
+      <button id="loadPngBtn" class="button">Load PNG</button>
+      <input id="pngInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+      <button id="loadGlbBtn" class="button">Load GLB</button>
+      <input id="glbInput" type="file" accept=".glb,model/gltf-binary" hidden />
+      <button id="exportPngBtn" class="button">Export PNG</button>
+      <button id="exportConfigBtn" class="button">Export Config</button>
+      <button id="importConfigBtn" class="button">Import Config</button>
+      <input id="configInput" type="file" accept="application/json,.json" hidden />
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel controls">
+      <section>
+        <div class="section-title">Map Source</div>
+        <label>Source
+          <select id="sourceType">
+            <option value="perlin">Perlin</option>
+            <option value="simplex">Simplex</option>
+            <option value="value">Value</option>
+            <option value="fbm">FBM / layered</option>
+            <option value="png">Provided PNG</option>
+          </select>
+        </label>
+        <div id="pngStatus" class="status">No PNG loaded. Use “Load PNG”.</div>
+      </section>
+
+      <section>
+        <div class="section-title">Map</div>
+        <div class="grid2">
+          <label>Resolution
+            <select id="resolution">
+              <option>64</option><option>128</option><option>256</option><option selected>512</option><option>1024</option>
+            </select>
+          </label>
+          <label>Seed
+            <input id="seed" type="number" step="1" value="482917" />
+          </label>
+          <label>Scale
+            <input id="scale" type="range" min="0.2" max="12" step="0.05" value="3.2" />
+            <output data-for="scale"></output>
+          </label>
+          <label>Rotation
+            <input id="rotation" type="range" min="-180" max="180" step="1" value="0" />
+            <output data-for="rotation"></output>
+          </label>
+          <label>Offset X
+            <input id="offsetX" type="range" min="-1" max="1" step="0.005" value="0" />
+            <output data-for="offsetX"></output>
+          </label>
+          <label>Offset Y
+            <input id="offsetY" type="range" min="-1" max="1" step="0.005" value="0" />
+            <output data-for="offsetY"></output>
+          </label>
+        </div>
+        <label class="check"><input id="mirror" type="checkbox" checked /> Mirror repeat outside map</label>
+        <label class="check"><input id="invert" type="checkbox" /> Invert grayscale</label>
+      </section>
+
+      <section>
+        <div class="section-title">Noise</div>
+        <div class="grid2">
+          <label>Octaves
+            <input id="octaves" type="range" min="1" max="8" step="1" value="5" />
+            <output data-for="octaves"></output>
+          </label>
+          <label>Lacunarity
+            <input id="lacunarity" type="range" min="1" max="4" step="0.01" value="2" />
+            <output data-for="lacunarity"></output>
+          </label>
+          <label>Gain
+            <input id="gain" type="range" min="0.1" max="0.9" step="0.01" value="0.5" />
+            <output data-for="gain"></output>
+          </label>
+          <label>Contrast
+            <input id="contrast" type="range" min="0.25" max="4" step="0.01" value="1.15" />
+            <output data-for="contrast"></output>
+          </label>
+          <label>Brightness
+            <input id="brightness" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
+            <output data-for="brightness"></output>
+          </label>
+          <label>Threshold
+            <input id="threshold" type="range" min="0" max="1" step="0.005" value="0.5" />
+            <output data-for="threshold"></output>
+          </label>
+          <label>Softness
+            <input id="softness" type="range" min="0.001" max="0.5" step="0.005" value="0.2" />
+            <output data-for="softness"></output>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-title">Domain Warp</div>
+        <label class="check"><input id="warpEnabled" type="checkbox" checked /> Enable warp</label>
+        <div class="grid2">
+          <label>Strength
+            <input id="warpStrength" type="range" min="0" max="1" step="0.01" value="0.16" />
+            <output data-for="warpStrength"></output>
+          </label>
+          <label>Frequency
+            <input id="warpFrequency" type="range" min="0.2" max="8" step="0.05" value="1.6" />
+            <output data-for="warpFrequency"></output>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-title">Model Projection</div>
+        <label>Projection
+          <select id="projection">
+            <option value="uv">UV</option>
+            <option value="xy">Object XY</option>
+            <option value="xz">Object XZ</option>
+            <option value="yz">Object YZ</option>
+            <option value="triplanar" selected>Triplanar</option>
+          </select>
+        </label>
+        <div class="grid2">
+          <label>Projection Scale
+            <input id="projectionScale" type="range" min="0.1" max="8" step="0.05" value="1" />
+            <output data-for="projectionScale"></output>
+          </label>
+          <label>Triplanar Sharpness
+            <input id="triplanarSharpness" type="range" min="1" max="16" step="0.25" value="5" />
+            <output data-for="triplanarSharpness"></output>
+          </label>
+        </div>
+        <label class="check"><input id="showWireframe" type="checkbox" /> Wireframe</label>
+      </section>
+
+      <section>
+        <div class="section-title">Palette</div>
+        <div class="palette-row">
+          <label>Dark<input id="color0" type="color" value="#1d4248" /></label>
+          <label>Mid 1<input id="color1" type="color" value="#2e6650" /></label>
+          <label>Mid 2<input id="color2" type="color" value="#63ad63" /></label>
+          <label>Light<input id="color3" type="color" value="#87db53" /></label>
+        </div>
+        <label class="check"><input id="usePalette" type="checkbox" checked /> Apply palette to model</label>
+      </section>
+
+      <section>
+        <div class="section-title">Preview</div>
+        <label class="check"><input id="autoRotate" type="checkbox" checked /> Auto rotate models</label>
+        <label class="check"><input id="showGrid" type="checkbox" checked /> Ground grid</label>
+        <label>Environment
+          <select id="environment">
+            <option value="studio">Studio</option>
+            <option value="linen" selected>Linen</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div class="preview-card">
+        <div class="card-head"><span>MAP PREVIEW</span><span id="mapStats">512 × 512</span></div>
+        <canvas id="mapCanvas" width="512" height="512"></canvas>
+      </div>
+      <div class="preview-card scene-card">
+        <div class="card-head"><span>MODEL VARIATIONS</span><span id="modelStatus">Loading bushes.glb…</span></div>
+        <div id="scene"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

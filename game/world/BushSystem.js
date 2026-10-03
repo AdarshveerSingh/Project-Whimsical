@@ -7,6 +7,7 @@ import {
 import PropDistributionSystem from "./PropDistributionSystem.js";
 import { BushShader } from "../shaders/BushShader.js";
 
+
 export class BushSystem {
 
     constructor({
@@ -72,28 +73,49 @@ export class BushSystem {
 
 
         // ==================================================
+        // ACTIVE BUSH MATERIALS
+        // ==================================================
+
+        /*
+         * Every BushShader material is stored here so that
+         * the wind animation can be advanced once per frame.
+         *
+         * Materials are shared by all instances of a
+         * particular bush variation/source mesh.
+         */
+
+        this.bushMaterials =
+            new Set();
+
+
+        // ==================================================
         // LOADER
         // ==================================================
-this.loader =
-    new GLTFLoader();
+
+        this.loader =
+            new GLTFLoader();
 
 
-this.noiseTexture =
-    new THREE.TextureLoader().load(
-        "./textures/mapForTest.png"
-    );
+        // ==================================================
+        // NOISE TEXTURE
+        // ==================================================
 
-this.noiseTexture.wrapS =
-    THREE.ClampToEdgeWrapping;
+        this.noiseTexture =
+            new THREE.TextureLoader().load(
+                "./textures/mapForTest.png"
+            );
 
-this.noiseTexture.wrapT =
-    THREE.ClampToEdgeWrapping;
+        this.noiseTexture.wrapS =
+            THREE.ClampToEdgeWrapping;
 
-this.noiseTexture.minFilter =
-    THREE.LinearFilter;
+        this.noiseTexture.wrapT =
+            THREE.ClampToEdgeWrapping;
 
-this.noiseTexture.magFilter =
-    THREE.LinearFilter;
+        this.noiseTexture.minFilter =
+            THREE.LinearFilter;
+
+        this.noiseTexture.magFilter =
+            THREE.LinearFilter;
 
 
         // ==================================================
@@ -111,6 +133,13 @@ this.noiseTexture.magFilter =
 
         this.tempScale =
             new THREE.Vector3();
+
+        this.upAxis =
+            new THREE.Vector3(
+                0,
+                1,
+                0
+            );
 
 
         // ==================================================
@@ -157,481 +186,710 @@ this.noiseTexture.magFilter =
             0.75;
 
 
+        // ==================================================
+        // WIND SETTINGS
+        // ==================================================
+
+        /*
+         * These values are intentionally mild.
+         *
+         * Bushes should move noticeably, but they should
+         * not behave like grass.
+         */
+
+        this.windStrength =
+            0.56;
+
+        this.windFrequency =
+            0.18;
+
+        this.windSpeed =
+            0.75;
+
+
+        this.windDirection =
+            new THREE.Vector2(
+                1.0,
+                0.35
+            ).normalize();
+
+
+        // ==================================================
+        // FOG SETTINGS
+        // ==================================================
+
+        /*
+         * These match the general atmospheric direction
+         * already used by the terrain.
+         */
+
+this.fogColor =
+    scene.fog
+        ? scene.fog.color.clone()
+        : new THREE.Color(0x8fb9d4);
+
+this.fogNear =
+    scene.fog
+        ? scene.fog.near
+        : 0.0;
+
+this.fogFar =
+    scene.fog
+        ? scene.fog.far
+        : 200.0;
+
+
+        // ==================================================
+        // ANIMATION TIME
+        // ==================================================
+
+        this.time =
+            0.0;
+
+
+        // ==================================================
+        // LOAD MODEL
+        // ==================================================
+
         this.loadModel();
 
     }
 
-createBushMaterial(
-    sourceMaterial,
-    sourceMatrix,
-    bushMin,
-    bushMax
-) {
 
-    const material =
-        new THREE.ShaderMaterial({
+    // ==================================================
+    // CREATE BUSH MATERIAL
+    // ==================================================
 
-            uniforms:
-                THREE.UniformsUtils.clone(
-                    BushShader.uniforms
-                ),
-
-            vertexShader:
-                BushShader.vertexShader,
-
-            fragmentShader:
-                BushShader.fragmentShader,
-
-            side:
-                THREE.DoubleSide,
-
-            transparent:
-                false,
-
-            depthWrite:
-                true,
-
-            depthTest:
-                true
-
-        });
-
-
-    /*
-     * --------------------------------------------------
-     * ORIGINAL GLB TEXTURE
-     * --------------------------------------------------
-     */
-    if (
-        sourceMaterial.map
+    createBushMaterial(
+        sourceMaterial,
+        sourceMatrix,
+        bushMin,
+        bushMax
     ) {
 
-        material.uniforms.map.value =
-            sourceMaterial.map;
+        const material =
+            new THREE.ShaderMaterial({
+
+                uniforms:
+                    THREE.UniformsUtils.merge([
+                        THREE.UniformsLib.lights,
+
+                        THREE.UniformsUtils.clone(
+                            BushShader.uniforms
+                        )
+                    ]),
+
+                vertexShader:
+                    BushShader.vertexShader,
+
+                fragmentShader:
+                    BushShader.fragmentShader,
+
+                side:
+                    THREE.DoubleSide,
+
+                transparent:
+                    false,
+
+                depthWrite:
+                    true,
+
+                depthTest:
+                    true,
+
+                lights:
+                    true
+
+            });
+
+
+        // ==================================================
+        // ORIGINAL GLB TEXTURE
+        // ==================================================
+
+        if (
+            sourceMaterial.map
+        ) {
+
+            material.uniforms.map.value =
+                sourceMaterial.map;
+
+        }
+
+
+        // ==================================================
+        // BUSH-LOCAL MAP
+        // ==================================================
+
+        material.uniforms.noiseMap.value =
+            this.noiseTexture;
+
+
+        // ==================================================
+        // COMPLETE BUSH BOUNDS
+        // ==================================================
+
+        material.uniforms.bushMin.value =
+            bushMin.clone();
+
+        material.uniforms.bushMax.value =
+            bushMax.clone();
+
+
+        // ==================================================
+        // SOURCE MESH TRANSFORM
+        // ==================================================
+
+        material.uniforms.sourceMatrix.value =
+            sourceMatrix.clone();
+
+        material.uniforms.sourceInverseMatrix.value =
+    sourceMatrix.clone().invert();
+
+
+        // ==================================================
+        // WIND
+        // ==================================================
+
+        /*
+         * These uniforms are read by BushShader.
+         *
+         * The values are copied rather than shared so that
+         * every shader material remains independent.
+         */
+
+        if (
+            material.uniforms.time
+        ) {
+
+            material.uniforms.time.value =
+                this.time;
+
+        }
+
+
+        if (
+            material.uniforms.windStrength
+        ) {
+
+            material.uniforms.windStrength.value =
+                this.windStrength;
+
+        }
+
+
+        if (
+            material.uniforms.windFrequency
+        ) {
+
+            material.uniforms.windFrequency.value =
+                this.windFrequency;
+
+        }
+
+
+        if (
+            material.uniforms.windSpeed
+        ) {
+
+            material.uniforms.windSpeed.value =
+                this.windSpeed;
+
+        }
+
+
+        if (
+            material.uniforms.windDirection
+        ) {
+
+            material.uniforms.windDirection.value =
+                this.windDirection.clone();
+
+        }
+
+
+        // ==================================================
+        // FOG
+        // ==================================================
+
+        if (
+            material.uniforms.fogColor
+        ) {
+
+            material.uniforms.fogColor.value =
+                this.fogColor.clone();
+
+        }
+
+
+        if (
+            material.uniforms.fogNear
+        ) {
+
+            material.uniforms.fogNear.value =
+                this.fogNear;
+
+        }
+
+
+        if (
+            material.uniforms.fogFar
+        ) {
+
+            material.uniforms.fogFar.value =
+                this.fogFar;
+
+        }
+
+
+        // ==================================================
+        // REGISTER MATERIAL
+        // ==================================================
+
+        this.bushMaterials.add(
+            material
+        );
+
+
+        return material;
 
     }
 
 
-    /*
-     * --------------------------------------------------
-     * BUSH-LOCAL MAP
-     * --------------------------------------------------
-     */
-    material.uniforms.noiseMap.value =
-        this.noiseTexture;
-
-
-    /*
-     * --------------------------------------------------
-     * COMPLETE BUSH BOUNDS
-     * --------------------------------------------------
-     */
-    material.uniforms.bushMin.value =
-        bushMin.clone();
-
-
-    material.uniforms.bushMax.value =
-        bushMax.clone();
-
-
-    /*
-     * --------------------------------------------------
-     * SOURCE MESH TRANSFORM
-     * --------------------------------------------------
-     */
-    material.uniforms.sourceMatrix.value =
-        sourceMatrix.clone();
-
-
-    return material;
-
-}
     // ==================================================
     // LOAD BUSH MODEL
     // ==================================================
 
-// ==================================================
-// LOAD BUSH MODEL
-// ==================================================
+    loadModel() {
 
-loadModel() {
+        this.loader.load(
 
-    this.loader.load(
+            this.modelPath,
 
-        this.modelPath,
+            (gltf) => {
 
-        (gltf) => {
-
-            const root =
-                gltf.scene;
+                const root =
+                    gltf.scene;
 
 
-            root.updateMatrixWorld(
-                true
-            );
-
-
-            // ==================================================
-            // FIND BUSH VARIATIONS
-            // ==================================================
-
-            for (
-                let i = 1;
-                i <= 5;
-                i++
-            ) {
-
-                const name =
-                    `Bush_${String(i).padStart(2, "0")}`;
-
-
-                const variation =
-                    root.getObjectByName(
-                        name
-                    );
-
-
-                if (!variation) {
-
-                    console.warn(
-                        `BushSystem: ${name} was not found in ${this.modelPath}`
-                    );
-
-                    continue;
-
-                }
-
-
-                variation.updateMatrixWorld(
+                root.updateMatrixWorld(
                     true
                 );
 
 
                 // ==================================================
-                // COLLECT SOURCE MESHES
+                // FIND BUSH VARIATIONS
                 // ==================================================
 
-                const rawSources =
-                    [];
-
-
-                if (
-                    variation.isMesh
+                for (
+                    let i = 1;
+                    i <= 5;
+                    i++
                 ) {
+
+                    const name =
+                        `Bush_${String(i).padStart(2, "0")}`;
+
+
+                    const variation =
+                        root.getObjectByName(
+                            name
+                        );
+
+
+                    if (
+                        !variation
+                    ) {
+
+                        console.warn(
+                            `BushSystem: ${name} was not found in ${this.modelPath}`
+                        );
+
+                        continue;
+
+                    }
+
 
                     variation.updateMatrixWorld(
                         true
                     );
 
 
+                    // ==================================================
+                    // COLLECT SOURCE MESHES
+                    // ==================================================
+
+                    const rawSources =
+                        [];
+
+
                     if (
-                        variation.geometry &&
-                        variation.material
+                        variation.isMesh
                     ) {
 
-                        rawSources.push({
+                        variation.updateMatrixWorld(
+                            true
+                        );
+
+
+                        if (
+                            variation.geometry &&
+                            variation.material
+                        ) {
+
+                            rawSources.push({
+
+                                geometry:
+                                    variation.geometry,
+
+                                material:
+                                    variation.material,
+
+                                worldMatrix:
+                                    variation.matrixWorld.clone()
+
+                            });
+
+                        }
+
+                    }
+
+
+                    else {
+
+                        variation.traverse(
+                            (object) => {
+
+                                if (
+                                    !object.isMesh
+                                ) {
+
+                                    return;
+
+                                }
+
+
+                                if (
+                                    !object.geometry ||
+                                    !object.material
+                                ) {
+
+                                    return;
+
+                                }
+
+
+                                object.updateMatrixWorld(
+                                    true
+                                );
+
+
+                                rawSources.push({
+
+                                    geometry:
+                                        object.geometry,
+
+                                    material:
+                                        object.material,
+
+                                    worldMatrix:
+                                        object.matrixWorld.clone()
+
+                                });
+
+                            }
+                        );
+
+                    }
+
+
+                    if (
+                        rawSources.length === 0
+                    ) {
+
+                        continue;
+
+                    }
+
+
+                    // ==================================================
+                    // CONVERT EVERYTHING INTO
+                    // VARIATION-LOCAL SPACE
+                    // ==================================================
+
+                    const variationInverse =
+                        variation.matrixWorld
+                            .clone()
+                            .invert();
+
+
+                    const localSources =
+                        [];
+
+
+                    const bushMin =
+                        new THREE.Vector3(
+                            Infinity,
+                            Infinity,
+                            Infinity
+                        );
+
+
+                    const bushMax =
+                        new THREE.Vector3(
+                            -Infinity,
+                            -Infinity,
+                            -Infinity
+                        );
+
+
+                    const geometryBox =
+                        new THREE.Box3();
+
+
+                    const transformedBox =
+                        new THREE.Box3();
+
+
+                    for (
+                        const source
+                        of rawSources
+                    ) {
+
+                        // --------------------------------------------------
+                        // Source mesh -> variation-local transform
+                        // --------------------------------------------------
+
+                        const localMatrix =
+                            variationInverse
+                                .clone()
+                                .multiply(
+                                    source.worldMatrix
+                                );
+
+
+                        // --------------------------------------------------
+                        // Calculate geometry bounds
+                        // --------------------------------------------------
+
+                        if (
+                            !source.geometry.boundingBox
+                        ) {
+
+                            source.geometry.computeBoundingBox();
+
+                        }
+
+
+                        geometryBox.copy(
+                            source.geometry.boundingBox
+                        );
+
+
+                        transformedBox
+                            .copy(
+                                geometryBox
+                            )
+                            .applyMatrix4(
+                                localMatrix
+                            );
+
+
+                        bushMin.min(
+                            transformedBox.min
+                        );
+
+
+                        bushMax.max(
+                            transformedBox.max
+                        );
+
+
+                        localSources.push({
 
                             geometry:
-                                variation.geometry,
+                                source.geometry,
 
                             material:
-                                variation.material,
+                                source.material,
 
-                            worldMatrix:
-                                variation.matrixWorld.clone()
+                            matrix:
+                                localMatrix
 
                         });
 
                     }
 
-                }
+
+                    // ==================================================
+                    // CREATE SHADER MATERIALS
+                    // ==================================================
+
+                    const meshes =
+                        [];
 
 
-                else {
-
-                    variation.traverse(
-                        (object) => {
-
-                            if (
-                                !object.isMesh
-                            ) {
-
-                                return;
-
-                            }
-
-
-                            if (
-                                !object.geometry ||
-                                !object.material
-                            ) {
-
-                                return;
-
-                            }
-
-
-                            object.updateMatrixWorld(
-                                true
-                            );
-
-
-                            rawSources.push({
-
-                                geometry:
-                                    object.geometry,
-
-                                material:
-                                    object.material,
-
-                                worldMatrix:
-                                    object.matrixWorld.clone()
-
-                            });
-
-                        }
-                    );
-
-                }
-
-
-                if (
-                    rawSources.length === 0
-                ) {
-
-                    continue;
-
-                }
-
-
-                // ==================================================
-                // CONVERT EVERYTHING INTO VARIATION-LOCAL SPACE
-                // ==================================================
-
-                const variationInverse =
-                    variation.matrixWorld
-                        .clone()
-                        .invert();
-
-
-                const localSources =
-                    [];
-
-
-                const bushMin =
-                    new THREE.Vector3(
-                        Infinity,
-                        Infinity,
-                        Infinity
-                    );
-
-
-                const bushMax =
-                    new THREE.Vector3(
-                        -Infinity,
-                        -Infinity,
-                        -Infinity
-                    );
-
-
-                const geometryBox =
-                    new THREE.Box3();
-
-
-                const transformedBox =
-                    new THREE.Box3();
-
-
-                for (
-                    const source
-                    of rawSources
-                ) {
-
-                    // --------------------------------------------------
-                    // Source mesh -> variation-local transform
-                    // --------------------------------------------------
-
-                    const localMatrix =
-                        variationInverse
-                            .clone()
-                            .multiply(
-                                source.worldMatrix
-                            );
-
-
-                    // --------------------------------------------------
-                    // Calculate geometry bounds
-                    // --------------------------------------------------
-
-                    if (
-                        !source.geometry.boundingBox
+                    for (
+                        const source
+                        of localSources
                     ) {
 
-                        source.geometry.computeBoundingBox();
+                        const material =
+                            this.createBushMaterial(
+
+                                source.material,
+
+                                source.matrix,
+
+                                bushMin,
+
+                                bushMax
+
+                            );
+
+
+                        meshes.push({
+
+                            geometry:
+                                source.geometry,
+
+                            material,
+
+                            matrix:
+                                source.matrix.clone()
+
+                        });
 
                     }
 
 
-                    geometryBox.copy(
-                        source.geometry.boundingBox
-                    );
+                    // ==================================================
+                    // STORE VARIATION
+                    // ==================================================
 
+                    if (
+                        meshes.length > 0
+                    ) {
 
-                    transformedBox
-                        .copy(
-                            geometryBox
-                        )
-                        .applyMatrix4(
-                            localMatrix
+                        this.bushModels.set(
+
+                            i - 1,
+
+                            meshes
+
                         );
 
-
-                    bushMin.min(
-                        transformedBox.min
-                    );
-
-                    bushMax.max(
-                        transformedBox.max
-                    );
-
-
-                    localSources.push({
-
-                        geometry:
-                            source.geometry,
-
-                        material:
-                            source.material,
-
-                        matrix:
-                            localMatrix
-
-                    });
+                    }
 
                 }
 
 
                 // ==================================================
-                // CREATE SHADER MATERIALS
-                // ==================================================
-
-                const meshes =
-                    [];
-
-
-                for (
-                    const source
-                    of localSources
-                ) {
-
-                    const material =
-                        this.createBushMaterial(
-
-                            source.material,
-
-                            source.matrix,
-
-                            bushMin,
-
-                            bushMax
-
-                        );
-
-
-                    meshes.push({
-
-                        geometry:
-                            source.geometry,
-
-                        material,
-
-                        matrix:
-                            source.matrix.clone()
-
-                    });
-
-                }
-
-
-                // ==================================================
-                // STORE VARIATION
+                // CHECK MODEL
                 // ==================================================
 
                 if (
-                    meshes.length > 0
+                    this.bushModels.size === 0
                 ) {
 
-                    this.bushModels.set(
+                    console.error(
+                        "BushSystem: No Bush_01 ... Bush_05 meshes were found."
+                    );
 
-                        i - 1,
+                    return;
 
-                        meshes
+                }
 
+
+                this.modelReady =
+                    true;
+
+
+                console.log(
+                    `BushSystem: Loaded ${this.bushModels.size} bush variations.`
+                );
+
+
+                // ==================================================
+                // BUILD ALREADY LOADED CHUNKS
+                // ==================================================
+
+                for (
+                    const chunk
+                    of this.chunks.values()
+                ) {
+
+                    this.buildChunk(
+                        chunk
                     );
 
                 }
 
-            }
+            },
 
+            undefined,
 
-            // ==================================================
-            // CHECK MODEL
-            // ==================================================
-
-            if (
-                this.bushModels.size === 0
-            ) {
+            (error) => {
 
                 console.error(
-                    "BushSystem: No Bush_01 ... Bush_05 meshes were found."
+                    "BushSystem: Failed to load bush model.",
+                    this.modelPath,
+                    error
                 );
-
-                return;
 
             }
 
+        );
 
-            this.modelReady =
-                true;
-
-
-            console.log(
-                `BushSystem: Loaded ${this.bushModels.size} bush variations.`
-            );
+    }
 
 
-            // ==================================================
-            // BUILD ALREADY LOADED CHUNKS
-            // ==================================================
+    // ==================================================
+    // UPDATE
+    // ==================================================
 
-            for (
-                const chunk
-                of this.chunks.values()
+    update(
+        delta
+    ) {
+
+        /*
+         * Advance the wind animation.
+         *
+         * BushShader reads this uniform in the vertex shader.
+         */
+
+        this.time +=
+            delta;
+
+
+        for (
+            const material
+            of this.bushMaterials
+        ) {
+
+            if (
+                !material ||
+                !material.uniforms
             ) {
 
-                this.buildChunk(
-                    chunk
-                );
+                continue;
 
             }
 
-        },
 
-        undefined,
+            if (
+                material.uniforms.time
+            ) {
 
-        (error) => {
+                material.uniforms.time.value =
+                    this.time;
 
-            console.error(
-                "BushSystem: Failed to load bush model.",
-                this.modelPath,
-                error
-            );
+            }
 
         }
 
-    );
+    }
 
-}
 
     // ==================================================
     // DETERMINISTIC RANDOM
@@ -691,13 +949,13 @@ loadModel() {
             surface.weights;
 
 
-if (
-    surface.slope > 35
-) {
+        if (
+            surface.slope > 35
+        ) {
 
-    return 0.0;
+            return 0.0;
 
-}
+        }
 
 
         /*
@@ -874,6 +1132,7 @@ if (
                     this.chunkSize +
                     gx * this.spacing +
                     this.spacing * 0.5;
+
 
                 const baseZ =
                     chunk.z *
@@ -1341,11 +1600,7 @@ if (
 
                     this.tempQuaternion.setFromAxisAngle(
 
-                        new THREE.Vector3(
-                            0,
-                            1,
-                            0
-                        ),
+                        this.upAxis,
 
                         bush.rotation
 
@@ -1483,6 +1738,36 @@ if (
 
 
         this.chunks.clear();
+
+
+        // ==================================================
+        // DISPOSE SHADER MATERIALS
+        // ==================================================
+
+        for (
+            const material
+            of this.bushMaterials
+        ) {
+
+            material.dispose();
+
+        }
+
+
+        this.bushMaterials.clear();
+
+
+        // ==================================================
+        // DISPOSE NOISE TEXTURE
+        // ==================================================
+
+        if (
+            this.noiseTexture
+        ) {
+
+            this.noiseTexture.dispose();
+
+        }
 
     }
 
