@@ -18,6 +18,7 @@ function sampleTerrainHeight(
     const halfSize =
         terrainSize * 0.5;
 
+
     const normalizedX =
         (localX + halfSize) /
         terrainSize;
@@ -25,6 +26,7 @@ function sampleTerrainHeight(
     const normalizedZ =
         (localZ + halfSize) /
         terrainSize;
+
 
     const gx =
         Math.max(
@@ -38,17 +40,22 @@ function sampleTerrainHeight(
             Math.min(1, normalizedZ)
         );
 
+
     const gridX =
-        gx * (gridResolution - 1);
+        gx *
+        (gridResolution - 1);
 
     const gridZ =
-        gz * (gridResolution - 1);
+        gz *
+        (gridResolution - 1);
+
 
     const x0 =
         Math.floor(gridX);
 
     const z0 =
         Math.floor(gridZ);
+
 
     const x1 =
         Math.min(
@@ -62,11 +69,13 @@ function sampleTerrainHeight(
             gridResolution - 1
         );
 
+
     const tx =
         gridX - x0;
 
     const tz =
         gridZ - z0;
+
 
     const row0 =
         z0 * gridResolution;
@@ -74,102 +83,376 @@ function sampleTerrainHeight(
     const row1 =
         z1 * gridResolution;
 
+
     const h00 =
-        terrainGrid[row0 + x0];
+        terrainGrid[
+            row0 + x0
+        ];
 
     const h10 =
-        terrainGrid[row0 + x1];
+        terrainGrid[
+            row0 + x1
+        ];
 
     const h01 =
-        terrainGrid[row1 + x0];
+        terrainGrid[
+            row1 + x0
+        ];
 
     const h11 =
-        terrainGrid[row1 + x1];
+        terrainGrid[
+            row1 + x1
+        ];
+
 
     const hx0 =
-        h00 + (h10 - h00) * tx;
+        h00 +
+        (h10 - h00) *
+        tx;
 
     const hx1 =
-        h01 + (h11 - h01) * tx;
+        h01 +
+        (h11 - h01) *
+        tx;
+
 
     return (
-        hx0 + (hx1 - hx0) * tz
+        hx0 +
+        (hx1 - hx0) *
+        tz
     );
 }
 
 
 // ============================================================
-// TERRAIN SLOPE
+// GRASS WEIGHT SAMPLING
 // ============================================================
 //
-// Returns the approximate height gradient.
+// grassWeightGrid uses the exact same grid as the terrain
+// height grid.
 //
-// 0.0  = completely flat
-// 0.2  = gentle
-// 0.4  = noticeable
-// 0.6+ = steep
+// The values are:
 //
+// 0.0 = definitely not grass
+// 1.0 = fully grass
+//
+// Bilinear interpolation gives smooth transitions.
 // ============================================================
 
-function sampleSlope(
+function sampleGrassWeight(
     localX,
     localZ,
-    terrainGrid,
+    grassWeightGrid,
     gridResolution,
     terrainSize
 ) {
 
-    const sampleDistance =
-        terrainSize /
+    const halfSize =
+        terrainSize * 0.5;
+
+
+    const normalizedX =
+        (localX + halfSize) /
+        terrainSize;
+
+    const normalizedZ =
+        (localZ + halfSize) /
+        terrainSize;
+
+
+    const gx =
+        Math.max(
+            0,
+            Math.min(1, normalizedX)
+        );
+
+    const gz =
+        Math.max(
+            0,
+            Math.min(1, normalizedZ)
+        );
+
+
+    const gridX =
+        gx *
         (gridResolution - 1);
 
-    const left =
-        sampleTerrainHeight(
-            localX - sampleDistance,
-            localZ,
-            terrainGrid,
-            gridResolution,
-            terrainSize
+    const gridZ =
+        gz *
+        (gridResolution - 1);
+
+
+    const x0 =
+        Math.floor(gridX);
+
+    const z0 =
+        Math.floor(gridZ);
+
+
+    const x1 =
+        Math.min(
+            x0 + 1,
+            gridResolution - 1
         );
 
-    const right =
-        sampleTerrainHeight(
-            localX + sampleDistance,
-            localZ,
-            terrainGrid,
-            gridResolution,
-            terrainSize
+    const z1 =
+        Math.min(
+            z0 + 1,
+            gridResolution - 1
         );
 
-    const back =
-        sampleTerrainHeight(
-            localX,
-            localZ - sampleDistance,
-            terrainGrid,
-            gridResolution,
-            terrainSize
+
+    const tx =
+        gridX - x0;
+
+    const tz =
+        gridZ - z0;
+
+
+    const row0 =
+        z0 * gridResolution;
+
+    const row1 =
+        z1 * gridResolution;
+
+
+    const w00 =
+        grassWeightGrid[
+            row0 + x0
+        ];
+
+    const w10 =
+        grassWeightGrid[
+            row0 + x1
+        ];
+
+    const w01 =
+        grassWeightGrid[
+            row1 + x0
+        ];
+
+    const w11 =
+        grassWeightGrid[
+            row1 + x1
+        ];
+
+
+    const wx0 =
+        w00 +
+        (w10 - w00) *
+        tx;
+
+    const wx1 =
+        w01 +
+        (w11 - w01) *
+        tx;
+
+
+    return (
+        wx0 +
+        (wx1 - wx0) *
+        tz
+    );
+}
+
+
+function sampleSurfaceWeights(
+    localX,
+    localZ,
+    grassWeightGrid,
+    dirtWeightGrid,
+    gravelWeightGrid,
+    rockWeightGrid,
+    gridResolution,
+    terrainSize
+) {
+
+    const halfSize = terrainSize * 0.5;
+
+    const normalizedX =
+        (localX + halfSize) / terrainSize;
+
+    const normalizedZ =
+        (localZ + halfSize) / terrainSize;
+
+    const gx = Math.max(
+        0,
+        Math.min(1, normalizedX)
+    );
+
+    const gz = Math.max(
+        0,
+        Math.min(1, normalizedZ)
+    );
+
+    const gridX =
+        gx * (gridResolution - 1);
+
+    const gridZ =
+        gz * (gridResolution - 1);
+
+    const x0 = Math.floor(gridX);
+    const z0 = Math.floor(gridZ);
+
+    const x1 = Math.min(
+        x0 + 1,
+        gridResolution - 1
+    );
+
+    const z1 = Math.min(
+        z0 + 1,
+        gridResolution - 1
+    );
+
+    const tx = gridX - x0;
+    const tz = gridZ - z0;
+
+    const row0 =
+        z0 * gridResolution;
+
+    const row1 =
+        z1 * gridResolution;
+
+    function interpolate(grid) {
+
+        const w00 =
+            grid[row0 + x0];
+
+        const w10 =
+            grid[row0 + x1];
+
+        const w01 =
+            grid[row1 + x0];
+
+        const w11 =
+            grid[row1 + x1];
+
+        const wx0 =
+            w00 +
+            (w10 - w00) * tx;
+
+        const wx1 =
+            w01 +
+            (w11 - w01) * tx;
+
+        return (
+            wx0 +
+            (wx1 - wx0) * tz
+        );
+    }
+
+    return {
+        grass: interpolate(grassWeightGrid),
+        dirt: interpolate(dirtWeightGrid),
+        gravel: interpolate(gravelWeightGrid),
+        rock: interpolate(rockWeightGrid)
+    };
+}
+
+
+// ============================================================
+// GRASS DISTRIBUTION SAMPLING
+// ============================================================
+
+function sampleGrassDistribution(
+    distribution,
+    resolution,
+    localX,
+    localZ,
+    chunkSize
+) {
+
+    const maxIndex = resolution;
+
+    // localX/localZ are centered around the chunk:
+    // [-chunkSize / 2, +chunkSize / 2]
+    //
+    // Convert them to:
+    // [0, 1]
+    //
+    // The distribution grid is sampled using these normalized
+    // coordinates.
+
+    const u = Math.max(
+        0,
+        Math.min(
+            1,
+            (localX + chunkSize * 0.5) /
+            chunkSize
+        )
+    );
+
+    const v = Math.max(
+        0,
+        Math.min(
+            1,
+            (localZ + chunkSize * 0.5) /
+            chunkSize
+        )
+    );
+
+
+    const x = u * maxIndex;
+    const z = v * maxIndex;
+
+    const x0 = Math.floor(x);
+    const z0 = Math.floor(z);
+
+    const x1 =
+        Math.min(
+            x0 + 1,
+            maxIndex
         );
 
-    const front =
-        sampleTerrainHeight(
-            localX,
-            localZ + sampleDistance,
-            terrainGrid,
-            gridResolution,
-            terrainSize
+    const z1 =
+        Math.min(
+            z0 + 1,
+            maxIndex
         );
 
-    const dx =
-        (right - left) /
-        (sampleDistance * 2);
+    const tx = x - x0;
+    const tz = z - z0;
 
-    const dz =
-        (front - back) /
-        (sampleDistance * 2);
+    const stride =
+        resolution + 1;
 
-    return Math.sqrt(
-        dx * dx +
-        dz * dz
+
+    const a =
+        distribution[
+            z0 * stride + x0
+        ];
+
+    const b =
+        distribution[
+            z0 * stride + x1
+        ];
+
+    const c =
+        distribution[
+            z1 * stride + x0
+        ];
+
+    const d =
+        distribution[
+            z1 * stride + x1
+        ];
+
+
+    const top =
+        a +
+        (b - a) *
+        tx;
+
+    const bottom =
+        c +
+        (d - c) *
+        tx;
+
+
+    return (
+        top +
+        (bottom - top) *
+        tz
     );
 }
 
@@ -187,11 +470,13 @@ function hash2D(
     let h =
         seed >>> 0;
 
+
     h ^=
         Math.imul(
             x,
             374761393
         );
+
 
     h ^=
         Math.imul(
@@ -199,135 +484,94 @@ function hash2D(
             668265263
         );
 
+
     h =
         Math.imul(
             h ^ (h >>> 13),
             1274126177
         );
 
+
     h ^=
         h >>> 16;
+
 
     return h >>> 0;
 }
 
 
 // ============================================================
-// SEEDED RANDOM
+// SMOOTH VALUE NOISE
 // ============================================================
 
-function createRandom(
-    seed
-) {
+function smoothstep(edge0, edge1, x) {
 
-    let state =
-        seed >>> 0;
+    const t =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                (x - edge0) /
+                (edge1 - edge0)
+            )
+        );
 
-    return function () {
 
-        state +=
-            0x6D2B79F5;
-
-        let t =
-            state;
-
-        t =
-            Math.imul(
-                t ^ (t >>> 15),
-                t | 1
-            );
-
-        t ^=
-            t +
-            Math.imul(
-                t ^ (t >>> 7),
-                t | 61
-            );
-
-        return (
-            (t ^ (t >>> 14)) >>> 0
-        ) / 4294967296;
-    };
+    return (
+        t *
+        t *
+        (3 - 2 * t)
+    );
 }
 
 
-// ============================================================
-// VALUE NOISE
-// ============================================================
-//
-// Smooth 2D noise used to create natural grass patches.
-//
-// This is deliberately low-frequency so patches are broad
-// rather than individual noisy pixels.
-// ============================================================
-
-function valueNoise(
+function valueNoise2D(
     x,
     z,
-    seed
+    seed,
+    scale
 ) {
 
-    const x0 =
-        Math.floor(x);
+    const px = x * scale;
+    const pz = z * scale;
 
-    const z0 =
-        Math.floor(z);
+    const x0 = Math.floor(px);
+    const z0 = Math.floor(pz);
 
-    const x1 =
-        x0 + 1;
+    const x1 = x0 + 1;
+    const z1 = z0 + 1;
 
-    const z1 =
-        z0 + 1;
+    const tx = px - x0;
+    const tz = pz - z0;
 
-    const tx =
-        x - x0;
+    const sx = smoothstep(
+        0,
+        1,
+        tx
+    );
 
-    const tz =
-        z - z0;
-
-
-    // Smooth interpolation
-
-    const sx =
-        tx * tx *
-        (3 - 2 * tx);
-
-    const sz =
-        tz * tz *
-        (3 - 2 * tz);
+    const sz = smoothstep(
+        0,
+        1,
+        tz
+    );
 
 
     const n00 =
-        hash2D(
-            x0,
-            z0,
-            seed
-        ) /
-        4294967295;
+        (hash2D(x0, z0, seed) & 0xffff) /
+        65535;
 
     const n10 =
-        hash2D(
-            x1,
-            z0,
-            seed
-        ) /
-        4294967295;
+        (hash2D(x1, z0, seed) & 0xffff) /
+        65535;
 
     const n01 =
-        hash2D(
-            x0,
-            z1,
-            seed
-        ) /
-        4294967295;
+        (hash2D(x0, z1, seed) & 0xffff) /
+        65535;
 
     const n11 =
-        hash2D(
-            x1,
-            z1,
-            seed
-        ) /
-        4294967295;
+        (hash2D(x1, z1, seed) & 0xffff) /
+        65535;
 
 
     const nx0 =
@@ -350,82 +594,46 @@ function valueNoise(
 
 
 // ============================================================
-// GRASS PATCH MASK
-// ============================================================
-//
-// Combines several scales.
-//
-// Large noise:
-//     controls large grass fields
-//
-// Medium noise:
-//     breaks up the fields
-//
-// Small noise:
-//     adds irregularity
-//
+// SEEDED RANDOM
 // ============================================================
 
-function getGrassPatchValue(
-    worldX,
-    worldZ,
+function createRandom(
     seed
 ) {
 
-    const large =
-        valueNoise(
-            worldX * 0.035,
-            worldZ * 0.035,
-            seed
-        );
-
-    const medium =
-        valueNoise(
-            worldX * 0.085,
-            worldZ * 0.085,
-            seed + 137
-        );
-
-    const small =
-        valueNoise(
-            worldX * 0.20,
-            worldZ * 0.20,
-            seed + 271
-        );
+    let state =
+        seed >>> 0;
 
 
-    return (
-        large * 0.65 +
-        medium * 0.25 +
-        small * 0.10
-    );
-}
+    return function () {
+
+        state +=
+            0x6D2B79F5;
 
 
-// ============================================================
-// SMOOTHSTEP
-// ============================================================
+        let t =
+            state;
 
-function smoothstep(
-    edge0,
-    edge1,
-    value
-) {
 
-    const t =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                (value - edge0) /
-                (edge1 - edge0)
-            )
-        );
+        t =
+            Math.imul(
+                t ^ (t >>> 15),
+                t | 1
+            );
 
-    return (
-        t * t *
-        (3 - 2 * t)
-    );
+
+        t ^=
+            t +
+            Math.imul(
+                t ^ (t >>> 7),
+                t | 61
+            );
+
+
+        return (
+            (t ^ (t >>> 14)) >>> 0
+        ) / 4294967296;
+    };
 }
 
 
@@ -465,18 +673,29 @@ self.onmessage =
             terrainGrids.set(
                 data.key,
                 {
-
                     grid:
                         data.terrainGrid,
+
+                    grassWeightGrid:
+                        data.grassWeightGrid,
+
+                    dirtWeightGrid:
+                        data.dirtWeightGrid,
+
+                    gravelWeightGrid:
+                        data.gravelWeightGrid,
+
+                    rockWeightGrid:
+                        data.rockWeightGrid,
 
                     resolution:
                         data.gridResolution,
 
                     size:
                         data.terrainSize
-
                 }
             );
+
 
             return;
         }
@@ -494,6 +713,7 @@ self.onmessage =
             terrainGrids.delete(
                 data.key
             );
+
 
             return;
         }
@@ -519,7 +739,9 @@ self.onmessage =
             chunkZ,
             chunkSize,
             density,
-            seed
+            seed,
+            grassDistribution,
+            distributionResolution
         } = data;
 
 
@@ -544,6 +766,7 @@ self.onmessage =
                     `Terrain grid not found for ${key}.`
 
             });
+
 
             return;
         }
@@ -589,10 +812,45 @@ self.onmessage =
                 density
             );
 
+
+        // ------------------------------------------------------------
+        // WIND
+        // ------------------------------------------------------------
+
         const curves =
             new Float32Array(
                 density
             );
+
+
+        // ------------------------------------------------------------
+        // STATIC BLADE VARIATION
+        // ------------------------------------------------------------
+
+        const tiltX =
+            new Float32Array(
+                density
+            );
+
+        const tiltZ =
+            new Float32Array(
+                density
+            );
+
+
+        // ------------------------------------------------------------
+        // COLOR VARIATION
+        // ------------------------------------------------------------
+
+        const colorVariation =
+            new Float32Array(
+                density
+            );
+
+
+        // ------------------------------------------------------------
+        // LOD / FADE RANDOMNESS
+        // ------------------------------------------------------------
 
         const randomDensity =
             new Float32Array(
@@ -608,23 +866,13 @@ self.onmessage =
             0;
 
 
-        // We may reject many points because of:
-        //
-        // 1. steep slopes
-        // 2. empty grass patches
-        //
-        // Therefore we allow more attempts than the final
-        // requested density.
-
         const maxAttempts =
             density * 4;
 
 
         for (
             let attempt = 0;
-
             attempt < maxAttempts;
-
             attempt++
         ) {
 
@@ -651,6 +899,7 @@ self.onmessage =
                 ) *
                 chunkSize;
 
+
             const localZ =
                 (
                     random() -
@@ -659,132 +908,113 @@ self.onmessage =
                 chunkSize;
 
 
-            // ------------------------------------------------
-            // WORLD POSITION
-            // ------------------------------------------------
-
-            const worldX =
-                localX +
-                chunkX * chunkSize;
-
-            const worldZ =
-                localZ +
-                chunkZ * chunkSize;
-
-
             // =================================================
-            // SLOPE
+            // SURFACE WEIGHTS
             // =================================================
 
-            const slope =
-                sampleSlope(
-
+            const surface =
+                sampleSurfaceWeights(
                     localX,
                     localZ,
 
-                    terrain.grid,
+                    terrain.grassWeightGrid,
+                    terrain.dirtWeightGrid,
+                    terrain.gravelWeightGrid,
+                    terrain.rockWeightGrid,
+
                     terrain.resolution,
                     terrain.size
-
                 );
-
-
-            // ------------------------------------------------
-            // STEEP SLOPES = NO GRASS
-            // ------------------------------------------------
-            //
-            // Completely reject anything above this.
-            //
-            // 0.45 = beginning of steep
-            // 0.70 = absolutely no grass
-            //
-            // Between those values we gradually reduce
-            // probability.
-            // ------------------------------------------------
-
-            if (
-                slope >= 0.70
-            ) {
-
-                continue;
-            }
-
-
-            let slopeMask =
-                1.0;
-
-
-            if (
-                slope > 0.40
-            ) {
-
-                slopeMask =
-                    1.0 -
-                    smoothstep(
-                        0.40,
-                        0.70,
-                        slope
-                    );
-
-            }
-
-
-            // ------------------------------------------------
-            // Additional rejection on slopes
-            // ------------------------------------------------
-
-            if (
-                random() >
-                slopeMask
-            ) {
-
-                continue;
-            }
 
 
             // =================================================
-            // GRASS PATCH
+            // GRASS SURFACE WEIGHT
             // =================================================
 
-            const patchValue =
-                getGrassPatchValue(
+            const grassWeight =
+                surface.grass;
 
-                    worldX,
-                    worldZ,
-                    seed
 
+            // =================================================
+            // WORLD POSITION
+            // =================================================
+
+            const worldX =
+                chunkX * chunkSize +
+                localX;
+
+            const worldZ =
+                chunkZ * chunkSize +
+                localZ;
+
+
+            const grassDensity =
+                sampleGrassDistribution(
+                    grassDistribution,
+                    distributionResolution,
+                    localX,
+                    localZ,
+                    chunkSize
                 );
 
 
-            // ------------------------------------------------
-            // Convert noise into patches
-            // ------------------------------------------------
+            // =================================================
+            // BASE SURFACE DENSITY
+            // =================================================
             //
-            // < 0.42
-            //     mostly empty
+            // Grass surface:
+            // roughly 60–80%
             //
-            // 0.42 - 0.62
-            //     transition
+            // Transitional / dirt:
+            // progressively less.
             //
-            // > 0.62
-            //     grass field
-            // ------------------------------------------------
+            // Rock:
+            // naturally approaches zero.
+            //
 
-            const patchMask =
-                smoothstep(
-                    0.42,
-                    0.62,
-                    patchValue
+            let baseProbability;
+
+            if (
+                grassWeight >= 0.5
+            ) {
+
+                baseProbability =
+                    0.60 +
+                    (
+                        grassWeight - 0.5
+                    ) *
+                    0.40;
+
+            }
+            else {
+
+                baseProbability =
+                    grassWeight *
+                    0.20;
+            }
+
+
+            let grassProbability =
+                baseProbability *
+                grassDensity;
+
+            grassProbability =
+                Math.max(
+                    0,
+                    Math.min(
+                        0.80,
+                        grassProbability
+                    )
                 );
 
 
-            // ------------------------------------------------
-            // Empty patch
-            // ------------------------------------------------
+            // =================================================
+            // RANDOM SPAWN
+            // =================================================
 
             if (
                 random() >
-                patchMask
+                grassProbability
             ) {
 
                 continue;
@@ -802,6 +1032,7 @@ self.onmessage =
                     localZ,
 
                     terrain.grid,
+
                     terrain.resolution,
                     terrain.size
 
@@ -876,6 +1107,70 @@ self.onmessage =
                 2.0;
 
 
+            // =================================================
+            // STATIC TILT
+            // =================================================
+            //
+            // Small random lean so blades aren't perfectly
+            // vertical.
+            //
+
+            tiltX[
+                grassCount
+            ] =
+                (
+                    random() -
+                    0.5
+                ) *
+                0.22;
+
+
+            tiltZ[
+                grassCount
+            ] =
+                (
+                    random() -
+                    0.5
+                ) *
+                0.22;
+
+
+            // =================================================
+            // COLOR VARIATION
+            // =================================================
+            //
+            // Dense patches become slightly richer.
+            // Sparse patches become slightly lighter.
+            //
+            // Still subtle.
+            //
+
+            const colorVariationValue =
+                (
+                    grassDensity -
+                    0.5
+                ) *
+                0.30
+                +
+                (
+                    random() -
+                    0.5
+                ) *
+                0.12;
+
+
+            colorVariation[
+                grassCount
+            ] =
+                Math.max(
+                    -1.0,
+                    Math.min(
+                        1.0,
+                        colorVariationValue
+                    )
+                );
+
+
             // ------------------------------------------------
             // Shader variation
             // ------------------------------------------------
@@ -926,6 +1221,24 @@ self.onmessage =
                 grassCount
             );
 
+        const finalTiltX =
+            tiltX.slice(
+                0,
+                grassCount
+            );
+
+        const finalTiltZ =
+            tiltZ.slice(
+                0,
+                grassCount
+            );
+
+        const finalColorVariation =
+            colorVariation.slice(
+                0,
+                grassCount
+            );
+
         const finalRandomDensity =
             randomDensity.slice(
                 0,
@@ -970,25 +1283,30 @@ self.onmessage =
                 curves:
                     finalCurves,
 
+                tiltX:
+                    finalTiltX,
+
+                tiltZ:
+                    finalTiltZ,
+
+                colorVariation:
+                    finalColorVariation,
+
                 randomDensity:
                     finalRandomDensity
 
             },
 
             [
-
                 finalPositions.buffer,
-
                 finalRotations.buffer,
-
                 finalWidths.buffer,
-
                 finalHeights.buffer,
-
                 finalCurves.buffer,
-
+                finalTiltX.buffer,
+                finalTiltZ.buffer,
+                finalColorVariation.buffer,
                 finalRandomDensity.buffer
-
             ]
 
         );

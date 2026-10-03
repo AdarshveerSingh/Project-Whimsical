@@ -34,26 +34,87 @@ export const TerrainShader = {
 
         slopeEnd: {
             value: 0.65
+        },
+
+        // ==================================================
+        // FOG
+        // ==================================================
+
+        fogColor: {
+            value: new THREE.Color(0x9fc9e8)
+        },
+
+        fogNear: {
+            value: 100.0
+        },
+
+        fogFar: {
+            value: 900.0
         }
+
     },
 
 
+    // ============================================================
+    // VERTEX SHADER
+    // ============================================================
+
     vertexShader: `
+
+        #include <common>
+        #include <shadowmap_pars_vertex>
 
         attribute vec3 color;
 
+        // Surface weights:
+        //
+        // R = grass
+        // G = dirt
+        // B = gravel
+        // A = rock
+        //
+        attribute vec4 surfaceWeights;
+
+
         varying vec3 vWorldPosition;
         varying vec3 vWorldNormal;
+
         varying vec3 vSurfaceColor;
+        varying vec4 vSurfaceWeights;
+
+
+        // ==================================================
+        // FOG
+        // ==================================================
+
+        varying float vFogDepth;
+
 
         void main() {
 
-            vec4 worldPosition =
-                modelMatrix *
-                vec4(position, 1.0);
+            // ==================================================
+            // STANDARD THREE.JS VERTEX TRANSFORMS
+            // ==================================================
+
+            #include <beginnormal_vertex>
+            #include <defaultnormal_vertex>
+            #include <begin_vertex>
+
+
+            // ==================================================
+            // WORLD POSITION
+            // ==================================================
+
+            #include <worldpos_vertex>
+
 
             vWorldPosition =
                 worldPosition.xyz;
+
+
+            // ==================================================
+            // WORLD NORMAL
+            // ==================================================
 
             vWorldNormal =
                 normalize(
@@ -61,29 +122,89 @@ export const TerrainShader = {
                     normal
                 );
 
+
+            // ==================================================
+            // SURFACE DATA
+            // ==================================================
+
             vSurfaceColor =
                 color;
 
-            gl_Position =
-                projectionMatrix *
+
+            vSurfaceWeights =
+                surfaceWeights;
+
+
+            // ==================================================
+            // SHADOW COORDINATES
+            // ==================================================
+
+            #include <shadowmap_vertex>
+
+
+            // ==================================================
+            // VIEW POSITION
+            // ==================================================
+
+            vec4 mvPosition =
                 viewMatrix *
                 worldPosition;
+
+
+            vFogDepth =
+                -mvPosition.z;
+
+
+            // ==================================================
+            // OUTPUT
+            // ==================================================
+
+            gl_Position =
+                projectionMatrix *
+                mvPosition;
+
         }
 
     `,
 
 
+    // ============================================================
+    // FRAGMENT SHADER
+    // ============================================================
+
     fragmentShader: `
+
+        #include <common>
+        #include <packing>
+        #include <lights_pars_begin>
+        #include <shadowmap_pars_fragment>
+        #include <shadowmask_pars_fragment>
+
 
         varying vec3 vWorldPosition;
         varying vec3 vWorldNormal;
+
         varying vec3 vSurfaceColor;
+        varying vec4 vSurfaceWeights;
+
 
         uniform float minHeight;
         uniform float maxHeight;
 
         uniform float slopeStart;
         uniform float slopeEnd;
+
+
+        // ==================================================
+        // FOG
+        // ==================================================
+
+        uniform vec3 fogColor;
+
+        uniform float fogNear;
+        uniform float fogFar;
+
+        varying float vFogDepth;
 
 
         // ==================================================
@@ -103,11 +224,13 @@ export const TerrainShader = {
                     )
                 );
 
+
             p +=
                 dot(
                     p,
                     p + 34.5
                 );
+
 
             return fract(
                 sin(
@@ -116,6 +239,7 @@ export const TerrainShader = {
                     43758.5453
                 )
             );
+
         }
 
 
@@ -130,8 +254,10 @@ export const TerrainShader = {
             vec2 i =
                 floor(p);
 
+
             vec2 f =
                 fract(p);
+
 
             f =
                 f *
@@ -142,10 +268,12 @@ export const TerrainShader = {
                     f
                 );
 
+
             float a =
                 hash(
                     i
                 );
+
 
             float b =
                 hash(
@@ -156,6 +284,7 @@ export const TerrainShader = {
                     )
                 );
 
+
             float c =
                 hash(
                     i +
@@ -164,6 +293,7 @@ export const TerrainShader = {
                         1.0
                     )
                 );
+
 
             float d =
                 hash(
@@ -174,11 +304,21 @@ export const TerrainShader = {
                     )
                 );
 
+
             return mix(
-                mix(a, b, f.x),
-                mix(c, d, f.x),
+                mix(
+                    a,
+                    b,
+                    f.x
+                ),
+                mix(
+                    c,
+                    d,
+                    f.x
+                ),
                 f.y
             );
+
         }
 
 
@@ -195,31 +335,47 @@ export const TerrainShader = {
                     p * 0.025
                 );
 
+
             float medium =
                 noise(
                     p * 0.055
                 );
+
 
             float small =
                 noise(
                     p * 0.11
                 );
 
+
             return
                 large * 0.60 +
                 medium * 0.30 +
                 small * 0.10;
+
         }
 
 
         void main() {
 
             // ==================================================
-            // SOURCE SURFACE
+            // SURFACE WEIGHTS
             // ==================================================
 
-            vec3 sourceColor =
-                vSurfaceColor;
+            float grassWeight =
+                vSurfaceWeights.r;
+
+
+            float dirtWeight =
+                vSurfaceWeights.g;
+
+
+            float gravelWeight =
+                vSurfaceWeights.b;
+
+
+            float rockWeight =
+                vSurfaceWeights.a;
 
 
             // ==================================================
@@ -233,12 +389,14 @@ export const TerrainShader = {
                     0.28
                 );
 
+
             vec3 darkRootColor =
                 vec3(
                     0.08,
                     0.28,
                     0.10
                 );
+
 
             vec3 grassColor =
                 mix(
@@ -259,12 +417,14 @@ export const TerrainShader = {
                     0.38
                 );
 
+
             vec3 sandLight =
                 vec3(
                     0.92,
                     0.84,
                     0.65
                 );
+
 
             vec3 sandColor =
                 mix(
@@ -274,92 +434,48 @@ export const TerrainShader = {
                 );
 
 
-// ==================================================
-// SURFACE SYSTEM MASK
-// SurfaceSystem remains the authority.
-// ==================================================
-
-float greenAmount =
-    sourceColor.g -
-    max(
-        sourceColor.r,
-        sourceColor.b
-    );
-
-
-// ==================================================
-// BASE GRASS MASK
-// ==================================================
-
-float grassMask =
-    smoothstep(
-        0.015,
-        0.20,
-        greenAmount
-    );
-
-
-// ==================================================
-// CONTINUOUS EDGE VARIATION
-//
-// This does NOT create new grass regions.
-// It only breaks up the boundary.
-// ==================================================
-
-float edgeNoise =
-    surfaceNoise(
-        vWorldPosition.xz
-    );
-
-
-// Distance from the middle of the transition.
-// 0 = middle of boundary
-// 1 = solid grass/dirt
-float edgeStrength =
-    1.0 -
-    abs(
-        grassMask * 2.0 -
-        1.0
-    );
-
-
-// Very subtle displacement of the boundary.
-float edgeOffset =
-    (
-        edgeNoise -
-        0.5
-    ) *
-    0.035 *
-    edgeStrength;
-
-
-// Apply only to the transition.
-grassMask =
-    clamp(
-        grassMask +
-        edgeOffset,
-        0.0,
-        1.0
-    );
-
-
-// ==================================================
-// FINAL GRASS / DIRT COLOR
-// ==================================================
-
-vec3 terrainColor =
-    mix(
-        sandColor,
-        grassColor,
-        grassMask
-    );
             // ==================================================
-            // SUBTLE COLOR VARIATION
+            // GRAVEL
+            // ==================================================
+
+            vec3 gravelColor =
+                vec3(
+                    0.545,
+                    0.541,
+                    0.502
+                );
+
+
+            // ==================================================
+            // ROCK
+            // ==================================================
+
+            vec3 rockColor =
+                vec3(
+                    0.333,
+                    0.345,
+                    0.353
+                );
+
+
+            // ==================================================
+            // TERRAIN COLOR
+            // ==================================================
+
+            vec3 terrainColor =
+                grassColor * grassWeight +
+                sandColor * dirtWeight +
+                gravelColor * gravelWeight +
+                rockColor * rockWeight;
+
+
+            // ==================================================
+            // COLOR VARIATION
             // ==================================================
 
             float variation =
                 dot(
-                    sourceColor,
+                    vSurfaceColor,
                     vec3(
                         0.299,
                         0.587,
@@ -367,12 +483,14 @@ vec3 terrainColor =
                     )
                 );
 
+
             variation =
                 mix(
                     0.94,
                     1.06,
                     variation
                 );
+
 
             terrainColor *=
                 variation;
@@ -389,9 +507,11 @@ vec3 terrainColor =
                     1.0
                 );
 
+
             float slope =
                 1.0 -
                 flatness;
+
 
             float slopeMask =
                 smoothstep(
@@ -402,7 +522,7 @@ vec3 terrainColor =
 
 
             // ==================================================
-            // SOFT SLOPE DARKENING
+            // SLOPE DARKENING
             // ==================================================
 
             terrainColor =
@@ -410,6 +530,38 @@ vec3 terrainColor =
                     terrainColor,
                     terrainColor * 0.78,
                     slopeMask * 0.28
+                );
+
+
+// ==================================================
+// THREE.JS SHADOW
+// ==================================================
+
+float shadow = getShadowMask();
+
+// Keep ambient visibility inside shadows.
+// 0.50 = darkest possible shadow is 50% of the terrain color.
+shadow = mix(0.30, 1.0, shadow);
+
+terrainColor *= shadow;
+
+            // ==================================================
+            // FOG
+            // ==================================================
+
+            float fogFactor =
+                smoothstep(
+                    fogNear,
+                    fogFar,
+                    vFogDepth
+                );
+
+
+            terrainColor =
+                mix(
+                    terrainColor,
+                    fogColor,
+                    fogFactor
                 );
 
 

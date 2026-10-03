@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Vite
+.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Blender temporary / backup files
+*.blend1
+*.blend2
+*.blend3
+*.blend4
+*.blend5
+*.blend~
+.blender/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Large textures
+# Uncomment if these shouldn't be pushed:
+# *.psd
+# *.tif
+# *.tiff
+
+# Local development / temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# Large Model
+game/models/bigHouse.glb

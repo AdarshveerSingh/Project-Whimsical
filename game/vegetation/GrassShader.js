@@ -45,11 +45,15 @@ export function applyGrassShader(
 
             attribute float instanceCurve;
 
-            varying float vGrassHeight;
-            varying float vWindNoise;
+attribute float instanceColorVariation;
 
-            // Actual wind bending amount
-            varying float vBendAmount;
+varying float vGrassHeight;
+varying float vWindNoise;
+
+// Actual wind bending amount
+varying float vBendAmount;
+
+varying float vColorVariation;
 
         ` + shader.vertexShader;
 
@@ -290,6 +294,9 @@ export function applyGrassShader(
                 vGrassHeight =
 
                     heightPercent;
+                
+                vColorVariation =
+    instanceColorVariation;
 
 
                 // ==================================================
@@ -697,11 +704,13 @@ export function applyGrassShader(
 
             uniform bool showNoise;
 
-            varying float vGrassHeight;
+varying float vGrassHeight;
 
-            varying float vWindNoise;
+varying float vWindNoise;
 
-            varying float vBendAmount;
+varying float vBendAmount;
+
+varying float vColorVariation;
 
         ` + shader.fragmentShader;
 
@@ -907,9 +916,30 @@ export function applyGrassShader(
                 // FINAL COLOR
                 // ==================================================
 
-                diffuseColor.rgb =
+// ==================================================
+// PATCH COLOR VARIATION
+// ==================================================
 
-                    grassColor;
+float variation =
+    vColorVariation *
+    0.10;
+
+
+// ==================================================
+// APPLY SUBTLE VARIATION
+// ==================================================
+
+grassColor *=
+    1.0 +
+    variation;
+
+
+// ==================================================
+// FINAL COLOR
+// ==================================================
+
+diffuseColor.rgb =
+    grassColor;
 
 
                 // ==================================================

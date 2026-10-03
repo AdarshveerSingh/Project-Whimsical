@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>Prop Distribution Playground</title>
+
+
+    <!--
+        Tell the browser where npm package imports should point.
+    -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "../node_modules/three/build/three.module.js"
+        }
+    }
+    </script>
+
+
+    <style>
+
+        html,
+        body {
+
+            margin: 0;
+            padding: 0;
+
+            width: 100%;
+            height: 100%;
+
+            overflow: hidden;
+
+            background: #111;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+        }
+
+
+        #info {
+
+            position: fixed;
+
+            top: 16px;
+            left: 16px;
+
+            z-index: 10;
+
+            padding: 14px 16px;
+
+            background: rgba(20, 20, 20, 0.90);
+
+            color: white;
+
+            border-radius: 8px;
+
+            min-width: 230px;
+
+            user-select: none;
+
+        }
+
+
+        #info h2 {
+
+            margin: 0 0 8px 0;
+
+            font-size: 16px;
+
+        }
+
+
+        #info p {
+
+            margin: 5px 0;
+
+            font-size: 13px;
+
+            color: #bbb;
+
+        }
+
+
+        #controls {
+
+            margin-top: 12px;
+
+        }
+
+
+        button {
+
+            border: none;
+
+            margin: 3px;
+
+            padding: 7px 10px;
+
+            border-radius: 5px;
+
+            background: #333;
+
+            color: white;
+
+            cursor: pointer;
+
+        }
+
+
+        button:hover {
+
+            background: #555;
+
+        }
+
+
+        button.active {
+
+            background: #777;
+
+        }
+
+
+        input[type="range"] {
+
+            width: 180px;
+
+        }
+
+
+        #stats {
+
+            margin-top: 10px;
+
+            font-size: 12px;
+
+            color: #aaa;
+
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <div id="info">
+
+        <h2>Prop Distribution Playground</h2>
+
+        <p id="currentProp">Grass Distribution</p>
+
+
+        <div id="controls">
+            <button data-prop="all">ALL</button>
+            <button data-prop="grass">G</button>
+            <button data-prop="tree">T</button>
+            <button data-prop="rock">R</button>
+            <button data-prop="flower">F</button>
+            <button data-prop="bush">B</button>
+
+        </div>
+
+
+        <div style="margin-top: 10px;">
+
+            <label>
+
+                Spawn Density
+
+                <br>
+
+                <input
+                    id="densitySlider"
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.05"
+                    value="1"
+                >
+
+                <span id="densityValue">1.00</span>
+
+            </label>
+
+        </div>
+
+
+        <div id="stats">
+            Objects: 0
+        </div>
+
+    </div>
+
+
+    <script
+        type="module"
+        src="./propPlayground.js">
+    </script>
+
+</body>
+
+</html>

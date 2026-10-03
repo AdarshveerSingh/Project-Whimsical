@@ -83,7 +83,6 @@ export class GrassSystem
         this.generationQueue =
             [];
 
-
         this.generatingChunk =
             null;
 
@@ -293,6 +292,7 @@ export class GrassSystem
 
 
                 this.startNextGeneration();
+
             };
     }
 
@@ -301,106 +301,131 @@ export class GrassSystem
     // TERRAIN CHUNK REGISTRATION
     // ==================================================
 
-    registerTerrainChunk(
-        terrainChunk
+// ==================================================
+// TERRAIN CHUNK REGISTRATION
+// ==================================================
+
+registerTerrainChunk(
+    terrainChunk
+) {
+
+    const key =
+        `${terrainChunk.x},${terrainChunk.z}`;
+
+
+    const terrain =
+        terrainChunk.terrain;
+
+
+    if (
+        this.terrainChunks.has(key)
     ) {
 
-        const key =
-            `${terrainChunk.x},${terrainChunk.z}`;
-
-
-        const terrain =
-            terrainChunk.terrain;
-
-
-        if (
-            this.terrainChunks.has(key)
-        ) {
-
-            return;
-        }
-
-
-        const grid =
-            terrain.getHeightGrid();
-
-
-        this.terrainChunks.set(
-
-            key,
-
-            {
-
-                x:
-                    terrainChunk.x,
-
-                z:
-                    terrainChunk.z,
-
-                worldX:
-                    terrain.worldOffsetX,
-
-                worldZ:
-                    terrain.worldOffsetZ,
-
-                size:
-                    terrain.size,
-
-                grid:
-                    grid
-
-            }
-
-        );
-
-
-        // ==================================================
-        // SEND GRID TO WORKER
-        // ==================================================
-
-        this.worker.postMessage(
-
-            {
-
-                type:
-                    "setTerrainGrid",
-
-                key:
-                    key,
-
-                terrainGrid:
-                    grid.data,
-
-                gridResolution:
-                    grid.resolution,
-
-                terrainSize:
-                    grid.size
-
-            },
-
-            [
-
-                grid.data.buffer
-
-            ]
-
-        );
-
-
-        // ==================================================
-        // CREATE GRASS CHUNK
-        // ==================================================
-
-        this.queueChunk(
-
-            terrainChunk.x,
-            terrainChunk.z
-
-        );
+        return;
     }
 
 
+    const grid =
+        terrain.getHeightGrid();
+
+
+    this.terrainChunks.set(
+
+        key,
+
+        {
+
+            x:
+                terrainChunk.x,
+
+            z:
+                terrainChunk.z,
+
+            worldX:
+                terrain.worldOffsetX,
+
+            worldZ:
+                terrain.worldOffsetZ,
+
+            size:
+                terrain.size,
+
+            grid:
+                grid,
+
+            propDistributionSystem:
+                terrain.propDistributionSystem
+
+        }
+
+    );
+
+
+    // ==================================================
+    // SEND TERRAIN GRID TO WORKER
+    // ==================================================
+
+    this.worker.postMessage(
+
+        {
+
+            type:
+                "setTerrainGrid",
+
+            key:
+                key,
+
+            terrainGrid:
+                grid.data,
+
+            grassWeightGrid:
+                grid.grassWeightData,
+
+            dirtWeightGrid:
+                grid.dirtWeightData,
+
+            gravelWeightGrid:
+                grid.gravelWeightData,
+
+            rockWeightGrid:
+                grid.rockWeightData,
+
+            gridResolution:
+                grid.resolution,
+
+            terrainSize:
+                grid.size
+
+        },
+
+        [
+
+            grid.data.buffer,
+
+            grid.grassWeightData.buffer,
+
+            grid.dirtWeightData.buffer,
+
+            grid.gravelWeightData.buffer,
+
+            grid.rockWeightData.buffer
+
+        ]
+
+    );
+
+
+    // ==================================================
+    // QUEUE GRASS GENERATION
+    // ==================================================
+
+    this.queueChunk(
+
+        terrainChunk.x,
+        terrainChunk.z
+
+    );
+}
     // ==================================================
     // REMOVE TERRAIN CHUNK
     // ==================================================
@@ -463,77 +488,80 @@ export class GrassSystem
     // QUEUE CHUNK
     // ==================================================
 
-queueChunk(
-    chunkX,
-    chunkZ
-) {
-
-    const key =
-        `${chunkX},${chunkZ}`;
-
-
-    // Already generated
-    if (
-        this.chunks.has(key)
-    ) {
-        return;
-    }
-
-
-    // Already queued
-    for (
-        const job
-        of this.generationQueue
+    queueChunk(
+        chunkX,
+        chunkZ
     ) {
 
+        const key =
+            `${chunkX},${chunkZ}`;
+
+
+        // Already generated
         if (
-            job.x === chunkX &&
-            job.z === chunkZ
+            this.chunks.has(key)
         ) {
 
             return;
         }
+
+
+        // Already queued
+        for (
+            const job
+            of this.generationQueue
+        ) {
+
+            if (
+                job.x === chunkX &&
+                job.z === chunkZ
+            ) {
+
+                return;
+            }
+        }
+
+
+        // Already generating
+        if (
+            this.generatingChunk &&
+            this.generatingChunk.x === chunkX &&
+            this.generatingChunk.z === chunkZ
+        ) {
+
+            return;
+        }
+
+
+        // Terrain must exist
+        if (
+            !this.terrainChunks.has(key)
+        ) {
+
+            return;
+        }
+
+
+        // --------------------------------------------------------
+        // NO PLAYER DISTANCE CALCULATION
+        // --------------------------------------------------------
+
+        this.generationQueue.push({
+
+            x:
+                chunkX,
+
+            z:
+                chunkZ
+
+        });
+
+
+        // FIFO generation
+        this.startNextGeneration();
     }
 
 
-    // Already generating
-    if (
-        this.generatingChunk &&
-        this.generatingChunk.x === chunkX &&
-        this.generatingChunk.z === chunkZ
-    ) {
-
-        return;
-    }
-
-
-    // Terrain must exist
-    if (
-        !this.terrainChunks.has(key)
-    ) {
-
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // NO PLAYER DISTANCE CALCULATION
-    // --------------------------------------------------------
-
-    this.generationQueue.push({
-
-        x:
-            chunkX,
-
-        z:
-            chunkZ
-
-    });
-
-
-    // FIFO generation
-    this.startNextGeneration();
-}
     // ==================================================
     // START GENERATION
     // ==================================================
@@ -575,37 +603,133 @@ queueChunk(
         }
 
 
+        const terrain =
+            this.terrainChunks.get(key);
+
+
         this.generatingChunk =
             job;
 
 
-        this.worker.postMessage({
+        // ==================================================
+        // GRASS DISTRIBUTION
+        // ==================================================
 
-            type:
-                "generate",
+        const distributionResolution =
+            32;
 
-            jobId:
-                Date.now() +
-                Math.random(),
+        const distributionSize =
+            distributionResolution + 1;
 
-            key:
+        const grassDistribution =
+            new Float32Array(
+                distributionSize *
+                distributionSize
+            );
+
+
+        const propDistribution =
+            terrain.propDistributionSystem;
+
+
+        const chunkSize =
+            terrain.size;
+
+        const halfChunk =
+            chunkSize * 0.5;
+
+
+        for (
+            let z = 0;
+            z < distributionSize;
+            z++
+        ) {
+
+            for (
+                let x = 0;
+                x < distributionSize;
+                x++
+            ) {
+
+                const localX =
+                    (x / distributionResolution) *
+                    chunkSize -
+                    halfChunk;
+
+                const localZ =
+                    (z / distributionResolution) *
+                    chunkSize -
+                    halfChunk;
+
+
+                const worldX =
+                    terrain.worldX +
+                    localX;
+
+                const worldZ =
+                    terrain.worldZ +
+                    localZ;
+
+
+                grassDistribution[
+                    z * distributionSize + x
+                ] =
+                    propDistribution.getGrassDensity(
+                        worldX,
+                        worldZ
+                    );
+
+            }
+        }
+
+
+        // ==================================================
+        // SEND TO WORKER
+        // ==================================================
+
+        const jobId =
+            Date.now() +
+            Math.random();
+
+
+        this.worker.postMessage(
+
+            {
+
+                type:
+                    "generate",
+
+                jobId,
+
                 key,
 
-            chunkX:
-                job.x,
+                chunkX:
+                    job.x,
 
-            chunkZ:
-                job.z,
+                chunkZ:
+                    job.z,
 
-            chunkSize:
-                this.terrainChunks.get(key).size,
+                chunkSize,
 
-            density:
-                this.density,
+                density:
+                    this.density,
 
-            seed:
-                this.seed,
-        });
+                seed:
+                    this.seed,
+
+                grassDistribution,
+
+                distributionResolution
+
+            },
+
+            [
+
+                grassDistribution.buffer
+
+            ]
+
+        );
     }
 
 
@@ -660,6 +784,45 @@ queueChunk(
             new THREE.InstancedBufferAttribute(
 
                 data.curves,
+
+                1
+
+            )
+
+        );
+
+
+        // geometry.setAttribute(
+
+        //     "instanceTiltX",
+
+        //     new THREE.InstancedBufferAttribute(
+        //         data.tiltX,
+        //         1
+        //     )
+
+        // );
+
+
+        // geometry.setAttribute(
+
+        //     "instanceTiltZ",
+
+        //     new THREE.InstancedBufferAttribute(
+        //         data.tiltZ,
+        //         1
+        //     )
+
+        // );
+
+
+        geometry.setAttribute(
+
+            "instanceColorVariation",
+
+            new THREE.InstancedBufferAttribute(
+
+                data.colorVariation,
 
                 1
 
@@ -742,11 +905,11 @@ queueChunk(
 
             rotation.set(
 
-                0,
+                data.tiltX[i],
 
                 data.rotations[i],
 
-                0
+                data.tiltZ[i]
 
             );
 
@@ -1128,6 +1291,7 @@ queueChunk(
 
 
             if (!terrain) {
+
                 continue;
             }
 

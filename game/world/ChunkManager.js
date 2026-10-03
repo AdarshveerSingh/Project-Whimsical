@@ -1,31 +1,40 @@
 import { TerrainSystem } from "./TerrainSystem.js";
 import { BiomeSystem } from "./BiomeSystem.js";
 import { GrassSystem } from "../vegetation/GrassSystem.js";
-
+import { TreeSystem } from "./TreeSystem.js";
+import { RockSystem } from "./RockSystem.js";
+import { FlowerSystem } from "./FlowerSystem.js";
+import { BushSystem } from "./BushSystem.js";
 
 export class ChunkManager {
 
     constructor({
 
         scene,
+        sun,
         player,
 
         grassSystem = null,
         surfaceSystem = null,
-
+        treeSystem = null,
+        rockSystem = null,
+        flowerSystem = null,
+        bushSystem = null,
         chunkSize = 64,
 
         viewDistance = 3,
 
         baseHeight = 0.0,
-        maxHeight = 2.2,
-
+        maxHeight = 14.2,
+        heightScale = 6.0,
         seed = 482917
 
     }) {
 
         this.scene =
             scene;
+
+        this.sun = sun;
 
         this.player =
             player;
@@ -36,6 +45,14 @@ export class ChunkManager {
         this.surfaceSystem =
             surfaceSystem;
 
+        this.treeSystem =
+            treeSystem;
+        this.rockSystem =
+            rockSystem;
+        this.flowerSystem =
+            flowerSystem;
+        this.bushSystem =
+            bushSystem;
         this.chunkSize =
             chunkSize;
 
@@ -47,7 +64,7 @@ export class ChunkManager {
 
         this.maxHeight =
             maxHeight;
-
+        this.heightScale = heightScale;
         this.seed =
             seed;
 
@@ -295,11 +312,9 @@ export class ChunkManager {
                 baseHeight:
                     this.baseHeight,
 
-                maxHeight:
-                    this.maxHeight,
-
-                seed:
-                    this.seed,
+                maxHeight: this.maxHeight,
+                heightScale: this.heightScale,
+                seed: this.seed,
 
                 worldOffsetX:
                     worldX,
@@ -308,8 +323,9 @@ export class ChunkManager {
                     worldZ,
 
                 surfaceSystem:
-                    this.surfaceSystem
+                    this.surfaceSystem,
 
+                sun: this.sun
             });
 
 
@@ -385,9 +401,56 @@ export class ChunkManager {
 
         }
 
+        if (
+    this.treeSystem
+) {
+
+    this.treeSystem.registerTerrainChunk(
+        chunk
+    );
+
+}
+    if (
+    this.rockSystem
+) {
+
+    this.rockSystem.registerTerrainChunk(
+        chunk
+    );
+
+}
+if (
+    this.flowerSystem
+) {
+
+    this.flowerSystem.registerTerrainChunk(
+        chunk
+    );
+
+}
+if (
+    this.bushSystem
+) {
+
+    this.bushSystem.registerTerrainChunk(
+        chunk
+    );
+
+}
     }
 
+// updateShadowUniforms() {
 
+//     for (const chunk of this.chunks.values()) {
+
+//         if (
+//             chunk.terrain &&
+//             chunk.terrain.updateShadowUniforms
+//         ) {
+//             chunk.terrain.updateShadowUniforms();
+//         }
+//     }
+// }
     // ==================================================
     // UPDATE CHUNK LOD
     // ==================================================
@@ -512,8 +575,46 @@ export class ChunkManager {
             );
 
         }
+        if (
+    this.treeSystem
+) {
 
+    this.treeSystem.unregisterTerrainChunk(
+        chunkX,
+        chunkZ
+    );
 
+}
+if (
+    this.rockSystem
+) {
+
+    this.rockSystem.unregisterTerrainChunk(
+        chunkX,
+        chunkZ
+    );
+
+}
+if (
+    this.flowerSystem
+) {
+
+    this.flowerSystem.unregisterTerrainChunk(
+        chunkX,
+        chunkZ
+    );
+
+}
+if (
+    this.bushSystem
+) {
+
+    this.bushSystem.unregisterTerrainChunk(
+        chunkX,
+        chunkZ
+    );
+
+}
         // ==================================================
         // TERRAIN
         // ==================================================
@@ -867,65 +968,65 @@ export class ChunkManager {
     }
 
     // ==================================================
-// DEBUG MAPS
-// ==================================================
+    // DEBUG MAPS
+    // ==================================================
 
-generateDisplacementMap(
-    chunkX = 0,
-    chunkZ = 0,
-    resolution = 512
-) {
+    generateDisplacementMap(
+        chunkX = 0,
+        chunkZ = 0,
+        resolution = 512
+    ) {
 
-    const chunk =
-        this.getChunk(
-            chunkX,
-            chunkZ
+        const chunk =
+            this.getChunk(
+                chunkX,
+                chunkZ
+            );
+
+        if (!chunk) {
+
+            console.warn(
+                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+            );
+
+            return null;
+        }
+
+        return chunk.terrain.generateDisplacementMap(
+            resolution
         );
-
-    if (!chunk) {
-
-        console.warn(
-            `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-        );
-
-        return null;
     }
 
-    return chunk.terrain.generateDisplacementMap(
-        resolution
-    );
-}
 
+    // ==================================================
+    // SURFACE MAP
+    // ==================================================
 
-// ==================================================
-// SURFACE MAP
-// ==================================================
+    generateSurfaceMap(
+        chunkX = 0,
+        chunkZ = 0,
+        resolution = 512
+    ) {
 
-generateSurfaceMap(
-    chunkX = 0,
-    chunkZ = 0,
-    resolution = 512
-) {
+        const chunk =
+            this.getChunk(
+                chunkX,
+                chunkZ
+            );
 
-    const chunk =
-        this.getChunk(
-            chunkX,
-            chunkZ
+        if (!chunk) {
+
+            console.warn(
+                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+            );
+
+            return null;
+        }
+
+        return chunk.terrain.generateSurfaceMap(
+            resolution
         );
-
-    if (!chunk) {
-
-        console.warn(
-            `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-        );
-
-        return null;
     }
-
-    return chunk.terrain.generateSurfaceMap(
-        resolution
-    );
-}
     // ==================================================
     // GENERATE DISPLACEMENT MAP
     // ==================================================

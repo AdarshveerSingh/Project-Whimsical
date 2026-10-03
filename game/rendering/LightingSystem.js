@@ -4,6 +4,7 @@ import {
     LightProbeGrid
 } from "../node_modules/three/examples/jsm/lighting/LightProbeGrid.js";
 
+
 // ============================================================
 // CREATE LIGHTING + SHADOW SYSTEM
 // ============================================================
@@ -25,28 +26,36 @@ export function createShadowSystem(
 
 
     // ========================================================
-    // SUN
+    // SHADOW SUN
+    //
+    // This sun is ONLY responsible for:
+    // - terrain shadows
+    // - tree shadows
+    // - object shadows
+    //
+    // God rays do NOT use this sun.
     // ========================================================
 
     const sun =
         new THREE.DirectionalLight(
             0xffffff,
-            2.5
+            1.8
         );
 
     sun.name =
-        "Sun";
+        "ShadowSun";
 
 
     // ========================================================
-    // SUN POSITION
+    // PLAYER-RELATIVE SHADOW SUN OFFSET
     // ========================================================
 
-    sun.position.set(
-        -20,
-        70,
-        20
-    );
+    const shadowSunOffset =
+        new THREE.Vector3(
+            70,
+            140,
+            140
+        );
 
 
     // ========================================================
@@ -86,37 +95,32 @@ export function createShadowSystem(
     // SHADOW CAMERA
     // ========================================================
 
-    sun.shadow.camera.left =
-        -60;
+sun.shadow.camera.left =
+    -60;
 
-    sun.shadow.camera.right =
-        60;
+sun.shadow.camera.right =
+    60;
 
-    sun.shadow.camera.top =
-        60;
+sun.shadow.camera.top =
+    60;
 
-    sun.shadow.camera.bottom =
-        -60;
+sun.shadow.camera.bottom =
+    -60;
 
-    sun.shadow.camera.near =
-        0.1;
+sun.shadow.camera.near =
+    0.1;
 
-    sun.shadow.camera.far =
-        250;
+sun.shadow.camera.far =
+    250;
 
+sun.shadow.bias =
+    -0.0001;
 
-    // ========================================================
-    // SHADOW BIAS
-    // ========================================================
+sun.shadow.normalBias =
+    0.025;
 
-    sun.shadow.bias =
-        -0.0001;
-
-    sun.shadow.normalBias =
-        0.025;
-
-    sun.shadow.radius =
-        1.8;
+sun.shadow.radius =
+    1.8;
 
 
     // ========================================================
@@ -139,7 +143,7 @@ export function createShadowSystem(
         );
 
     sunHelper.name =
-        "SunHelper";
+        "ShadowSunHelper";
 
     scene.add(
         sunHelper
@@ -153,10 +157,9 @@ export function createShadowSystem(
     const ambientLight =
         new THREE.HemisphereLight(
 
-            0x8fcbea, // blue sky fill
-            0x52677a, // cool blue-gray ground fill
-
-            1.0
+            0x8fcbea, // sky
+            0x6f8290, // ground
+            1.35
 
         );
 
@@ -185,13 +188,11 @@ export function createShadowSystem(
     probes.name =
         "LightProbeGrid";
 
-
     probes.position.set(
         0,
         10,
         0
     );
-
 
     scene.add(
         probes
@@ -224,7 +225,6 @@ export function createShadowSystem(
                 }
             );
 
-
             console.log(
                 "LightProbeGrid baked."
             );
@@ -250,7 +250,10 @@ export function createShadowSystem(
 
 
     // ========================================================
-    // PLAYER-FOLLOWING SHADOWS
+    // UPDATE SHADOW SUN
+    //
+    // The shadow sun follows the player.
+    // Its direction remains fixed by shadowSunOffset.
     // ========================================================
 
     function update(
@@ -262,36 +265,21 @@ export function createShadowSystem(
         }
 
 
-        const x =
-            playerPosition.x;
+        // ====================================================
+        // MOVE SHADOW SUN
+        // ====================================================
 
-        const y =
-            playerPosition.y;
-
-        const z =
-            playerPosition.z;
+        sun.position
+            .copy(playerPosition)
+            .add(shadowSunOffset);
 
 
         // ====================================================
-        // MOVE SUN
+        // MOVE SHADOW TARGET
         // ====================================================
 
-        sun.position.set(
-            x - 0,
-            y + 20,
-            z + 50
-        );
-
-
-        // ====================================================
-        // MOVE SUN TARGET
-        // ====================================================
-
-        sun.target.position.set(
-            x,
-            y,
-            z
-        );
+        sun.target.position
+            .copy(playerPosition);
 
 
         // ====================================================
@@ -369,6 +357,7 @@ export function createShadowSystem(
 
     return {
 
+        // Shadow sun only
         sun,
 
         sunHelper,
@@ -376,6 +365,8 @@ export function createShadowSystem(
         ambientLight,
 
         probes,
+
+        shadowSunOffset,
 
         update,
 

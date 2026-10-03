@@ -37,7 +37,14 @@ import {
 import Stats from "./node_modules/three/examples/jsm/libs/stats.module.js";
 import { SurfaceSystem } from "./world/SurfaceSystem.js";
 import { Sky } from "./node_modules/three/examples/jsm/objects/Sky.js";
-
+import {
+    TreeSystem
+} from "./world/TreeSystem.js";
+import { RockSystem } from "./world/RockSystem.js";
+import { FlowerSystem } from "./world/FlowerSystem.js";
+import {
+    BushSystem
+} from "./world/BushSystem.js";
 // ==================================================
 // OPEN MAP IN NEW TAB
 // ==================================================
@@ -166,6 +173,58 @@ window.openDisplacementMap =
 
 window.openSurfaceMap =
     openSurfaceMap;
+
+// ==================================================
+// OPEN PROP DISTRIBUTION MAP
+// ==================================================
+
+function openPropDistributionMap(
+    type = "grass"
+) {
+
+    const debugTerrain =
+        chunkManager.getChunk(
+            0,
+            0
+        );
+
+
+    if (!debugTerrain) {
+
+        console.warn(
+            "Debug terrain chunk (0,0) is not loaded."
+        );
+
+        return;
+    }
+
+
+    const canvas =
+        debugTerrain.terrain
+            .generatePropDistributionMap(
+                type,
+                512
+            );
+
+
+    if (!canvas) {
+
+        console.warn(
+            `Cannot generate ${type} distribution map.`
+        );
+
+        return;
+    }
+
+
+    openMapInNewTab(
+        canvas,
+        `${type} Distribution Map`
+    );
+}
+
+window.openPropDistributionMap =
+    openPropDistributionMap;
 // ==================================================
 // SCENE
 // ==================================================
@@ -181,8 +240,9 @@ const scene =
 scene.fog =
     new THREE.Fog(
         0x8fb9d4,
-        32,
-        128
+        // 0xffffff,
+        0,
+        200
     );
 
 
@@ -323,7 +383,27 @@ const lighting =
         renderer
     );
 
+// ==================================================
+// GOD RAY SUN
+//
+// Completely independent from the shadow sun.
+//
+// This represents the visual sun direction for
+// atmospheric god rays only.
+// ==================================================
 
+const godRaySunDirection =
+    new THREE.Vector3(
+        0.35,
+        0.75,
+        1.50
+    ).normalize();
+
+
+// Distance used to place the virtual sun
+// far away from the player/camera.
+const godRaySunDistance =
+    1000;
 // ==================================================
 // ORBIT CONTROLS
 // ==================================================
@@ -533,7 +613,65 @@ scene.add(
 const surfaceSystem = new SurfaceSystem({
     seed: 482917
 });
+const treeSystem =
+    new TreeSystem({
 
+        scene,
+
+        surfaceSystem,
+
+        seed: 482917,
+
+        chunkSize: 64,
+
+        modelPath:
+            "./models/TreeMine.glb"
+
+    });
+
+const rockSystem =
+    new RockSystem({
+
+        scene,
+
+        seed: 482917,
+
+        chunkSize: 64,
+
+        modelPath:
+            "./models/rocks.glb"
+
+    });
+const flowerSystem =
+    new FlowerSystem({
+
+        scene,
+
+        surfaceSystem,
+
+        seed: 482917,
+
+        chunkSize: 64,
+
+        modelPath:
+            "./models/flowers.glb"
+
+    });
+const bushSystem =
+    new BushSystem({
+
+        scene,
+
+        surfaceSystem,
+
+        seed: 482917,
+
+        chunkSize: 64,
+
+        modelPath:
+            "./models/bushes.glb"
+
+    });
 const chunkManager =
     new ChunkManager({
 
@@ -544,6 +682,14 @@ const chunkManager =
 
         grassSystem,
 
+        treeSystem,
+
+        rockSystem,
+
+        flowerSystem,
+
+        bushSystem,
+
         chunkSize: 64,
 
         viewDistance: 3,
@@ -552,9 +698,13 @@ const chunkManager =
 
         maxHeight: 14.2,
 
+        heightScale: 6.0,
+
         seed: 482917,
 
-        surfaceSystem
+        surfaceSystem,
+
+        sun: lighting.sun
 
     });
 
@@ -726,7 +876,56 @@ window.addEventListener(
 
 );
 
+// ==================================================
+// PROP DISTRIBUTION DEBUG
+// ==================================================
 
+window.addEventListener(
+    "keydown",
+    (event) => {
+
+        const key =
+            event.key.toLowerCase();
+
+
+        switch (key) {
+
+            case "g":
+                openPropDistributionMap(
+                    "grass"
+                );
+                break;
+
+
+            case "t":
+                openPropDistributionMap(
+                    "tree"
+                );
+                break;
+
+
+            case "r":
+                openPropDistributionMap(
+                    "rock"
+                );
+                break;
+
+
+            case "f":
+                openPropDistributionMap(
+                    "flower"
+                );
+                break;
+
+
+            case "b":
+                openPropDistributionMap(
+                    "bush"
+                );
+                break;
+        }
+    }
+);
 // ==================================================
 // CLOCK
 // ==================================================
@@ -784,13 +983,46 @@ function updateChunkDebug() {
 
 // ==================================================
 // GOD RAY SUN POSITION
+//
+// Completely independent from the shadow sun.
+//
+// The virtual god-ray sun is positioned far away
+// from the player along a fixed world-space direction.
 // ==================================================
 
 function updateGodRaySunPosition() {
 
+    const playerPosition =
+        fpsController.getPosition();
+
+
+    if (!playerPosition) {
+        return;
+    }
+
+
+    // ==================================================
+    // VIRTUAL GOD-RAY SUN WORLD POSITION
+    // ==================================================
+
+    const godRayWorldPosition =
+        playerPosition
+            .clone()
+            .add(
+                godRaySunDirection
+                    .clone()
+                    .multiplyScalar(
+                        godRaySunDistance
+                    )
+            );
+
+
+    // ==================================================
+    // PROJECT INTO SCREEN SPACE
+    // ==================================================
+
     const projectedSun =
-        lighting.sun
-            .position
+        godRayWorldPosition
             .clone()
             .project(
                 camera
@@ -821,36 +1053,44 @@ function updateGodRaySunPosition() {
         sunY < 1.25;
 
 
-if (
-    inFront &&
-    onScreen
-) {
+    // ==================================================
+    // UPDATE GOD RAYS
+    // ==================================================
 
-    godRaysPass.uniforms
-        .sunPosition
-        .value.set(
-            sunX,
-            sunY
-        );
+    if (
+        inFront &&
+        onScreen
+    ) {
 
-    godRaysPass.uniforms
-        .intensity
-        .value =
-        1.0;
+        godRaysPass
+            .uniforms
+            .sunPosition
+            .value
+            .set(
+                sunX,
+                sunY
+            );
+
+
+        godRaysPass
+            .uniforms
+            .intensity
+            .value =
+            1.0;
+
+    }
+
+    else {
+
+        godRaysPass
+            .uniforms
+            .intensity
+            .value =
+            0.0;
+
+    }
 
 }
-
-else {
-
-    godRaysPass.uniforms
-        .intensity
-        .value =
-        0.0;
-
-}
-
-}
-
 
 // ==================================================
 // ANIMATION
@@ -887,6 +1127,9 @@ function animate() {
         delta,
         fpsController.getPosition()
     );
+    flowerSystem.update(
+    delta
+);
     updateChunkDebug();
 
 
@@ -897,7 +1140,7 @@ function animate() {
     lighting.update(
         fpsController.getPosition()
     );
-
+    // chunkManager.updateShadowUniforms();
 
     // ==============================================
     // CAMERA
