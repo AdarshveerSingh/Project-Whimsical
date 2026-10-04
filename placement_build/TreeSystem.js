@@ -20,10 +20,10 @@ export class TreeSystem {
     constructor({
         scene,
         surfaceSystem,
-        placementRegistry=null,
         seed = 482917,
         chunkSize = 64,
-        modelPath = "./models/TreeMine.glb"
+        modelPath = "./models/TreeMine.glb",
+        placementSystem = null
     }) {
 
         this.scene =
@@ -31,8 +31,7 @@ export class TreeSystem {
 
         this.surfaceSystem =
             surfaceSystem;
-        this.placementRegistry =
-            placementRegistry;
+
         this.seed =
             seed;
 
@@ -41,6 +40,9 @@ export class TreeSystem {
 
         this.modelPath =
             modelPath;
+
+        this.placementSystem =
+            placementSystem;
 
 
         // --------------------------------------------------------
@@ -258,6 +260,10 @@ export class TreeSystem {
 
                 }
 
+
+                if (this.placementSystem) {
+                    this.placementSystem.notifyChanged("tree");
+                }
 
                 console.log(
                     `Tree model loaded: ${this.modelMeshes.length} mesh batches`
@@ -526,6 +532,10 @@ export class TreeSystem {
                 record
             );
 
+            if (this.placementSystem) {
+                this.placementSystem.notifyChanged("tree", record.x, record.z);
+            }
+
         }
 
     }
@@ -538,6 +548,11 @@ export class TreeSystem {
     buildChunk(
         chunk
     ) {
+
+        if (this.placementSystem) {
+            this.placementSystem.beginChunk("tree", chunk.x, chunk.z);
+        }
+
 
         // --------------------------------------------------------
         // REMOVE PREVIOUS INSTANCES
@@ -758,6 +773,21 @@ export class TreeSystem {
                     scaleRandom * 0.75;
 
 
+                if (this.placementSystem) {
+                    const placementRadius = THREE.MathUtils.clamp(scale * 2.75, 2.4, 4.0);
+                    if (!this.placementSystem.canPlace("tree", worldX, worldZ, placementRadius)) {
+                        continue;
+                    }
+                    this.placementSystem.register(
+                        "tree",
+                        worldX,
+                        worldZ,
+                        placementRadius,
+                        chunk.x,
+                        chunk.z
+                    );
+                }
+
                 positions.push({
 
                     x:
@@ -791,37 +821,6 @@ export class TreeSystem {
 
         }
 
-        // ========================================================
-// PLACEMENT REGISTRY
-// ========================================================
-
-// ========================================================
-// PLACEMENT REGISTRY
-// ========================================================
-
-if (this.placementRegistry) {
-
-    for (const tree of positions) {
-
-        this.placementRegistry.register({
-
-            type: "tree",
-
-            x: tree.x,
-
-            z: tree.z,
-
-            radius: 2.0,
-
-            chunkX: chunk.x,
-
-            chunkZ: chunk.z
-
-        });
-
-    }
-
-}
 
         // --------------------------------------------------------
         // CREATE INSTANCED MESHES
@@ -998,19 +997,15 @@ if (this.placementRegistry) {
             chunk.group
         );
 
-        if (
-    this.placementRegistry
-) {
 
-    this.placementRegistry.removeChunk(
-        chunkX,
-        chunkZ
-    );
-
-}
         this.chunks.delete(
             key
         );
+
+        if (this.placementSystem) {
+            this.placementSystem.unregisterChunk("tree", chunkX, chunkZ);
+            this.placementSystem.notifyChanged("tree", chunkX, chunkZ);
+        }
 
     }
 

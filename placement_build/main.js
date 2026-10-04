@@ -45,9 +45,7 @@ import { FlowerSystem } from "./world/FlowerSystem.js";
 import {
     BushSystem
 } from "./world/BushSystem.js";
-import {
-    PlacementRegistry
-} from "./world/PlacementRegistry.js";
+import PropPlacementSystem from "./world/PropPlacementSystem.js";
 // ==================================================
 // OPEN MAP IN NEW TAB
 // ==================================================
@@ -594,8 +592,8 @@ fpsController =
 
     });
 
-const placementRegistry =
-    new PlacementRegistry({
+const placementSystem =
+    new PropPlacementSystem({
 
         cellSize: 8
 
@@ -614,7 +612,7 @@ const grassSystem =
 
         lodFar: 100,
 
-        placementRegistry: placementRegistry
+        placementSystem
 
     });
 
@@ -632,14 +630,14 @@ const treeSystem =
 
         surfaceSystem,
 
-        placementRegistry,
-
         seed: 482917,
 
         chunkSize: 64,
 
         modelPath:
-            "./models/TreeMine.glb"
+            "./models/TreeMine.glb",
+
+        placementSystem
 
     });
 
@@ -647,13 +645,15 @@ const rockSystem =
     new RockSystem({
 
         scene,
-        placementRegistry,
+
         seed: 482917,
 
         chunkSize: 64,
 
         modelPath:
-            "./models/rocks.glb"
+            "./models/rocks.glb",
+
+        placementSystem
 
     });
 const flowerSystem =
@@ -668,7 +668,9 @@ const flowerSystem =
         chunkSize: 64,
 
         modelPath:
-            "./models/flowers.glb"
+            "./models/flowers.glb",
+
+        placementSystem
 
     });
 const bushSystem =
@@ -678,14 +680,14 @@ const bushSystem =
 
         surfaceSystem,
 
-        placementRegistry,
-
         seed: 482917,
 
         chunkSize: 64,
 
         modelPath:
-            "./models/bushes.glb"
+            "./models/bushes.glb",
+
+        placementSystem
 
     });
 const chunkManager =

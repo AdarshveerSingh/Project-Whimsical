@@ -13,10 +13,10 @@ export class BushSystem {
     constructor({
         scene,
         surfaceSystem,
-        placementRegistry = null,
         seed = 482917,
         chunkSize = 64,
-        modelPath = "./models/bushes.glb"
+        modelPath = "./models/bushes.glb",
+        placementSystem = null
     }) {
 
         this.scene =
@@ -24,9 +24,6 @@ export class BushSystem {
 
         this.surfaceSystem =
             surfaceSystem;
-
-        this.placementRegistry =
-    placementRegistry;
 
         this.seed =
             seed;
@@ -36,6 +33,9 @@ export class BushSystem {
 
         this.modelPath =
             modelPath;
+
+        this.placementSystem =
+            placementSystem;
 
 
         // ==================================================
@@ -254,6 +254,18 @@ this.fogFar =
         // ==================================================
         // LOAD MODEL
         // ==================================================
+
+        if (this.placementSystem) {
+            for (const type of ["tree", "rock"]) {
+                this.placementSystem.onChanged(
+                    type,
+                    (_changedType, chunkX, chunkZ) => {
+                        this.rebuildAffectedChunks(chunkX, chunkZ);
+                    }
+                );
+            }
+        }
+
 
         this.loadModel();
 
@@ -829,6 +841,10 @@ this.fogFar =
 
                 }
 
+                if (this.placementSystem) {
+                    this.placementSystem.notifyChanged("bush");
+                }
+
             },
 
             undefined,
@@ -1044,6 +1060,10 @@ this.fogFar =
                 record
             );
 
+            if (this.placementSystem) {
+                this.placementSystem.notifyChanged("bush", record.x, record.z);
+            }
+
         }
 
     }
@@ -1063,6 +1083,11 @@ this.fogFar =
 
             return;
 
+        }
+
+
+        if (this.placementSystem) {
+            this.placementSystem.beginChunk("bush", chunk.x, chunk.z);
         }
 
 
@@ -1384,45 +1409,22 @@ this.fogFar =
 
                     }
 
+
                     // ==================================================
-// PLACEMENT EXCLUSION
-// ==================================================
-//
-// Bushes cannot spawn inside trees or rocks.
-//
-// TreeSystem and RockSystem already register their
-// accepted placements in the shared registry.
-//
-// Bushes are only consumers of the registry in
-// Phase 2. Bushes are NOT registered yet.
-//
-// ==================================================
+                    // PROP PLACEMENT
+                    // ==================================================
 
-if (
-    this.placementRegistry
-) {
+                    if (this.placementSystem) {
+                        if (!this.placementSystem.canPlace(
+                            "bush",
+                            bushX,
+                            bushZ,
+                            1.0
+                        )) {
+                            continue;
+                        }
+                    }
 
-    const blocked =
-        this.placementRegistry.isBlocked(
-            bushX,
-            bushZ,
-            1.0,
-            [
-                "tree",
-                "rock",
-                "bush"
-            ]
-        );
-
-    if (
-        blocked
-    ) {
-
-        continue;
-
-    }
-
-}
                     // ==================================================
                     // TERRAIN HEIGHT
                     // ==================================================
@@ -1525,16 +1527,18 @@ if (
                         ) *
                         clusterScale;
 
-                    if (this.placementRegistry) {
-    this.placementRegistry.register({
-        type: "bush",
-        x: bushX,
-        z: bushZ,
-        radius: 2.0,
-        chunkX: chunk.x,
-        chunkZ: chunk.z
-    });
-}
+
+                    if (this.placementSystem) {
+                        this.placementSystem.register(
+                            "bush",
+                            bushX,
+                            bushZ,
+                            1.0,
+                            chunk.x,
+                            chunk.z
+                        );
+                    }
+
                     positionsByVariation
                         .get(variation)
                         .push({
@@ -1722,6 +1726,26 @@ if (
     // UNREGISTER CHUNK
     // ==================================================
 
+    rebuildAffectedChunks(chunkX, chunkZ) {
+
+        if (chunkX === null || chunkZ === null) {
+            for (const chunk of this.chunks.values()) {
+                this.buildChunk(chunk);
+            }
+            return;
+        }
+
+        for (const chunk of this.chunks.values()) {
+            if (
+                Math.abs(chunk.x - chunkX) <= 1 &&
+                Math.abs(chunk.z - chunkZ) <= 1
+            ) {
+                this.buildChunk(chunk);
+            }
+        }
+    }
+
+
     unregisterTerrainChunk(
         chunkX,
         chunkZ
@@ -1766,6 +1790,11 @@ if (
         this.chunks.delete(
             key
         );
+
+        if (this.placementSystem) {
+            this.placementSystem.unregisterChunk("bush", chunkX, chunkZ);
+            this.placementSystem.notifyChanged("bush", chunkX, chunkZ);
+        }
 
     }
 

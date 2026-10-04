@@ -4,9 +4,7 @@ import {
     applyGrassShader
 } from "./GrassShader.js";
 
-import {
-    PlacementRegistry
-} from "../world/PlacementRegistry.js";
+
 
 export class GrassSystem
     extends THREE.Object3D {
@@ -24,7 +22,7 @@ export class GrassSystem
 
         lodFar = 100,
 
-        placementRegistry = null
+        placementSystem = null
 
     } = {}) {
 
@@ -41,8 +39,10 @@ export class GrassSystem
         this.seed =
             seed;
 
-        this.placementRegistry =
-    placementRegistry;
+        this.placementSystem =
+            placementSystem;
+
+
         this.lodNear =
             lodNear;
 
@@ -91,6 +91,9 @@ export class GrassSystem
 
         this.generatingChunk =
             null;
+
+        this.invalidatedChunks =
+            new Set();
 
 
         // ==================================================
@@ -303,6 +306,18 @@ export class GrassSystem
     }
 
 
+        if (this.placementSystem) {
+            for (const type of ["tree", "rock", "bush"]) {
+                this.placementSystem.onChanged(
+                    type,
+                    (_changedType, chunkX, chunkZ) => {
+                        this.invalidateAffectedChunks(chunkX, chunkZ);
+                    }
+                );
+            }
+        }
+
+
     // ==================================================
     // TERRAIN CHUNK REGISTRATION
     // ==================================================
@@ -432,6 +447,56 @@ registerTerrainChunk(
 
     );
 }
+    // ==================================================
+    // INVALIDATE AFFECTED GRASS CHUNKS
+    // ==================================================
+
+    invalidateAffectedChunks(chunkX, chunkZ) {
+
+        const targets = [];
+
+        if (chunkX === null || chunkZ === null) {
+            for (const terrain of this.terrainChunks.values()) {
+                targets.push([terrain.x, terrain.z]);
+            }
+        }
+        else {
+            for (const terrain of this.terrainChunks.values()) {
+                if (
+                    Math.abs(terrain.x - chunkX) <= 1 &&
+                    Math.abs(terrain.z - chunkZ) <= 1
+                ) {
+                    targets.push([terrain.x, terrain.z]);
+                }
+            }
+        }
+
+        for (const [x, z] of targets) {
+            const key = `${x},${z}`;
+            const existing = this.chunks.get(key);
+
+            if (existing) {
+                this.removeGrassChunk(existing);
+            }
+
+            this.generationQueue = this.generationQueue.filter(
+                job => !(job.x === x && job.z === z)
+            );
+
+            if (
+                this.generatingChunk &&
+                this.generatingChunk.x === x &&
+                this.generatingChunk.z === z
+            ) {
+                this.invalidatedChunks.add(key);
+                continue;
+            }
+
+            this.queueChunk(x, z);
+        }
+    }
+
+
     // ==================================================
     // REMOVE TERRAIN CHUNK
     // ==================================================
@@ -690,6 +755,39 @@ registerTerrainChunk(
 
 
         // ==================================================
+        // PROP EXCLUSION GRID
+        // ==================================================
+
+        const exclusionResolution = distributionResolution;
+        const exclusionSize = exclusionResolution + 1;
+        const grassExclusionGrid = new Float32Array(
+            exclusionSize * exclusionSize
+        );
+
+        if (this.placementSystem) {
+            for (let z = 0; z < exclusionSize; z++) {
+                for (let x = 0; x < exclusionSize; x++) {
+                    const localX =
+                        (x / exclusionResolution) * chunkSize - halfChunk;
+                    const localZ =
+                        (z / exclusionResolution) * chunkSize - halfChunk;
+                    const worldX = terrain.worldX + localX;
+                    const worldZ = terrain.worldZ + localZ;
+
+                    grassExclusionGrid[
+                        z * exclusionSize + x
+                    ] = this.placementSystem.isBlocked(
+                        "grass",
+                        worldX,
+                        worldZ,
+                        0.15
+                    );
+                }
+            }
+        }
+
+
+        // ==================================================
         // SEND TO WORKER
         // ==================================================
 
@@ -725,13 +823,19 @@ registerTerrainChunk(
 
                 grassDistribution,
 
-                distributionResolution
+                distributionResolution,
+
+                grassExclusionGrid,
+
+                exclusionResolution
 
             },
 
             [
 
-                grassDistribution.buffer
+                grassDistribution.buffer,
+
+                grassExclusionGrid.buffer
 
             ]
 
@@ -774,168 +878,7 @@ registerTerrainChunk(
             return;
         }
 
-        // ==================================================
-// PLACEMENT EXCLUSION
-// ==================================================
 
-if (this.placementRegistry) {
-
-    const acceptedPositions = [];
-
-    for (let i = 0; i < data.density; i++) {
-
-        const p = i * 3;
-
-        const localX =
-            data.positions[p];
-
-        const localZ =
-            data.positions[p + 2];
-
-        const worldX =
-            terrain.worldX + localX;
-
-        const worldZ =
-            terrain.worldZ + localZ;
-
-        const blocked =
-            this.placementRegistry.isBlocked(
-                worldX,
-                worldZ,
-                0.15,
-                ["tree", "rock", "bush"]
-            );
-
-        if (!blocked) {
-            acceptedPositions.push(i);
-        }
-    }
-
-    // Rebuild arrays using only accepted grass blades
-    const filteredPositions =
-        new Float32Array(
-            acceptedPositions.length * 3
-        );
-
-    const filteredRotations =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredWidths =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredHeights =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredCurves =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredTiltX =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredTiltZ =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredColorVariation =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    const filteredRandomDensity =
-        new Float32Array(
-            acceptedPositions.length
-        );
-
-    for (
-        let i = 0;
-        i < acceptedPositions.length;
-        i++
-    ) {
-
-        const source =
-            acceptedPositions[i];
-
-        const sourceP =
-            source * 3;
-
-        const targetP =
-            i * 3;
-
-        filteredPositions[targetP] =
-            data.positions[sourceP];
-
-        filteredPositions[targetP + 1] =
-            data.positions[sourceP + 1];
-
-        filteredPositions[targetP + 2] =
-            data.positions[sourceP + 2];
-
-        filteredRotations[i] =
-            data.rotations[source];
-
-        filteredWidths[i] =
-            data.widths[source];
-
-        filteredHeights[i] =
-            data.heights[source];
-
-        filteredCurves[i] =
-            data.curves[source];
-
-        filteredTiltX[i] =
-            data.tiltX[source];
-
-        filteredTiltZ[i] =
-            data.tiltZ[source];
-
-        filteredColorVariation[i] =
-            data.colorVariation[source];
-
-        filteredRandomDensity[i] =
-            data.randomDensity[source];
-    }
-
-    data.positions =
-        filteredPositions;
-
-    data.rotations =
-        filteredRotations;
-
-    data.widths =
-        filteredWidths;
-
-    data.heights =
-        filteredHeights;
-
-    data.curves =
-        filteredCurves;
-
-    data.tiltX =
-        filteredTiltX;
-
-    data.tiltZ =
-        filteredTiltZ;
-
-    data.colorVariation =
-        filteredColorVariation;
-
-    data.randomDensity =
-        filteredRandomDensity;
-
-    data.density =
-        acceptedPositions.length;
-}
         // ==================================================
         // GEOMETRY
         // ==================================================
@@ -1204,6 +1147,21 @@ if (this.placementRegistry) {
 
         this.generatingChunk =
             null;
+
+        if (this.invalidatedChunks.has(key)) {
+            this.invalidatedChunks.delete(key);
+
+            const staleChunk = this.chunks.get(key);
+
+            if (staleChunk) {
+                this.removeGrassChunk(staleChunk);
+            }
+
+            this.queueChunk(
+                data.chunkX,
+                data.chunkZ
+            );
+        }
 
 
         this.startNextGeneration();

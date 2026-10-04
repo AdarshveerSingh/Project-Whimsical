@@ -388,56 +388,31 @@ export class ChunkManager {
 
 
         // ==================================================
-        // GRASS
+        // PROP PLACEMENT ORDER
+        // ==================================================
+        // Higher-priority footprints are registered before
+        // lower-priority systems generate their candidates.
         // ==================================================
 
-        if (
-            this.grassSystem
-        ) {
-
-            this.grassSystem.registerTerrainChunk(
-                chunk
-            );
-
+        if (this.treeSystem) {
+            this.treeSystem.registerTerrainChunk(chunk);
         }
 
-        if (
-    this.treeSystem
-) {
+        if (this.rockSystem) {
+            this.rockSystem.registerTerrainChunk(chunk);
+        }
 
-    this.treeSystem.registerTerrainChunk(
-        chunk
-    );
+        if (this.bushSystem) {
+            this.bushSystem.registerTerrainChunk(chunk);
+        }
 
-}
-    if (
-    this.rockSystem
-) {
+        if (this.flowerSystem) {
+            this.flowerSystem.registerTerrainChunk(chunk);
+        }
 
-    this.rockSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
-if (
-    this.flowerSystem
-) {
-
-    this.flowerSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
-if (
-    this.bushSystem
-) {
-
-    this.bushSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
-
+        if (this.grassSystem) {
+            this.grassSystem.registerTerrainChunk(chunk);
+        }
     }
 
 // updateShadowUniforms() {

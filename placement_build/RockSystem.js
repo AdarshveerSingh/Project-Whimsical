@@ -15,22 +15,19 @@ export class RockSystem {
 
         scene,
 
-        placementRegistry = null,
-
         seed = 482917,
 
         chunkSize = 64,
 
         modelPath =
-            "./models/rocks.glb"
+            "./models/rocks.glb",
+
+        placementSystem = null
 
     }) {
 
         this.scene =
             scene;
-
-        this.placementRegistry =
-            placementRegistry;
 
         this.seed =
             seed;
@@ -40,6 +37,9 @@ export class RockSystem {
 
         this.modelPath =
             modelPath;
+
+        this.placementSystem =
+            placementSystem;
 
 
         // ====================================================
@@ -126,6 +126,16 @@ this.maxRockHeight =
         // ====================================================
         // LOAD
         // ====================================================
+
+        if (this.placementSystem) {
+            this.placementSystem.onChanged(
+                "tree",
+                (_type, chunkX, chunkZ) => {
+                    this.rebuildAffectedChunks(chunkX, chunkZ);
+                }
+            );
+        }
+
 
         this.loadModel();
 
@@ -314,6 +324,10 @@ clone.userData.rockHeight =
                 }
 
 
+                if (this.placementSystem) {
+                    this.placementSystem.notifyChanged("rock");
+                }
+
                 console.log(
                     `Rock model loaded: ${this.variationNames.length} variations`
                 );
@@ -337,89 +351,6 @@ clone.userData.rockHeight =
     }
 
 
-    // ========================================================
-// DEBUG ROCK RADIUS
-// ========================================================
-
-
-// ========================================================
-// GET ROCK FOOTPRINT RADIUS
-// ========================================================
-//
-// Finds the furthest horizontal point of the actual rock
-// geometry from the rock's origin.
-//
-// This avoids using a world-space AABB, which can become
-// artificially large when the rock is rotated.
-// ========================================================
-
-getRockFootprintRadius(rock) {
-
-    let maxRadiusSquared = 0;
-
-    rock.updateMatrixWorld(true);
-
-    rock.traverse((object) => {
-
-        if (!object.isMesh) {
-            return;
-        }
-
-        const geometry =
-            object.geometry;
-
-        if (!geometry) {
-            return;
-        }
-
-        const position =
-            geometry.attributes.position;
-
-        if (!position) {
-            return;
-        }
-
-        const vertex =
-            new THREE.Vector3();
-
-        for (
-            let i = 0;
-            i < position.count;
-            i++
-        ) {
-
-            vertex.fromBufferAttribute(
-                position,
-                i
-            );
-
-            // Convert the vertex into rock-local space.
-            object.localToWorld(vertex);
-            rock.worldToLocal(vertex);
-
-            const radiusSquared =
-                vertex.x * vertex.x +
-                vertex.z * vertex.z;
-
-            if (
-                radiusSquared >
-                maxRadiusSquared
-            ) {
-
-                maxRadiusSquared =
-                    radiusSquared;
-
-            }
-
-        }
-
-    });
-
-    return Math.sqrt(
-        maxRadiusSquared
-    );
-
-}
     // ========================================================
     // DETERMINISTIC RANDOM
     // ========================================================
@@ -869,17 +800,11 @@ getRockFootprintRadius(rock) {
                 chunk
             );
 
+            if (this.placementSystem) {
+                this.placementSystem.notifyChanged("rock", chunk.x, chunk.z);
+            }
+
         }
-
-        // ========================================================
-// PLACEMENT REGISTRY
-// ========================================================
-//
-// Phase 1 only.
-// Rocks are NOT checked against trees or other rocks yet.
-// ========================================================
-
-
 
     }
 
@@ -887,6 +812,26 @@ getRockFootprintRadius(rock) {
     // ========================================================
     // UNREGISTER TERRAIN CHUNK
     // ========================================================
+
+    rebuildAffectedChunks(chunkX, chunkZ) {
+
+        if (chunkX === null || chunkZ === null) {
+            for (const chunk of this.chunks.values()) {
+                this.buildChunk(chunk);
+            }
+            return;
+        }
+
+        for (const chunk of this.chunks.values()) {
+            if (
+                Math.abs(chunk.x - chunkX) <= 1 &&
+                Math.abs(chunk.z - chunkZ) <= 1
+            ) {
+                this.buildChunk(chunk);
+            }
+        }
+    }
+
 
     unregisterTerrainChunk(
         chunkX,
@@ -940,19 +885,15 @@ getRockFootprintRadius(rock) {
 
         }
 
-        if (
-    this.placementRegistry
-) {
 
-    this.placementRegistry.removeChunk(
-        chunkX,
-        chunkZ
-    );
-
-}
         this.chunks.delete(
             key
         );
+
+        if (this.placementSystem) {
+            this.placementSystem.unregisterChunk("rock", chunkX, chunkZ);
+            this.placementSystem.notifyChanged("rock", chunkX, chunkZ);
+        }
 
     }
 
@@ -971,6 +912,11 @@ getRockFootprintRadius(rock) {
 
             return;
 
+        }
+
+
+        if (this.placementSystem) {
+            this.placementSystem.beginChunk("rock", chunk.x, chunk.z);
         }
 
 
@@ -1411,6 +1357,26 @@ const distribution =
                     }
 
 
+                    if (this.placementSystem) {
+                        const placementRadius = 1.5;
+                        if (!this.placementSystem.canPlace(
+                            "rock",
+                            chunk.worldX + rockX,
+                            chunk.worldZ + rockZ,
+                            placementRadius
+                        )) {
+                            continue;
+                        }
+                        this.placementSystem.register(
+                            "rock",
+                            chunk.worldX + rockX,
+                            chunk.worldZ + rockZ,
+                            placementRadius,
+                            chunk.x,
+                            chunk.z
+                        );
+                    }
+
                     placedPositions.push({
 
                         x:
@@ -1495,12 +1461,22 @@ const distribution =
                         rockZ
 
                     );
-            
+
 
                     // =================================================
                     // ROTATION
                     // =================================================
 
+                    if (
+                        this.randomRotation
+                    ) {
+
+                        rock.rotation.y =
+                            random() *
+                            Math.PI *
+                            2;
+
+                    }
 
 
 // =================================================
@@ -1526,56 +1502,7 @@ const scale =
 rock.scale.setScalar(
     scale
 );
-if (this.placementRegistry) {
 
-    rock.updateMatrixWorld(true);
-
-    const rockBox =
-        new THREE.Box3().setFromObject(
-            rock
-        );
-
-    const rockSize =
-        new THREE.Vector3();
-
-    rockBox.getSize(
-        rockSize
-    );
-
-    const rockRadius =
-        Math.max(
-            rockSize.x,
-            rockSize.z
-        ) * 0.5;
-
-    this.placementRegistry.register({
-
-        type: "rock",
-
-        x: chunk.worldX + rockX,
-
-        z: chunk.worldZ + rockZ,
-
-        radius: rockRadius,
-
-        chunkX: chunk.x,
-
-        chunkZ: chunk.z
-
-    });
-
-}
-
-                    if (
-                        this.randomRotation
-                    ) {
-
-                        rock.rotation.y =
-                            random() *
-                            Math.PI *
-                            2;
-
-                    }
                     // =================================================
                     // SHADOWS
                     // =================================================
