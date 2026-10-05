@@ -1,242 +1,259 @@
-import { TerrainSystem } from "./TerrainSystem.js";
-import { BiomeSystem } from "./BiomeSystem.js";
-import { GrassSystem } from "../vegetation/GrassSystem.js";
-import { TreeSystem } from "./TreeSystem.js";
-import { RockSystem } from "./RockSystem.js";
-import { FlowerSystem } from "./FlowerSystem.js";
-import { BushSystem } from "./BushSystem.js";
+    import { TerrainSystem } from "./TerrainSystem.js";
+    import { BiomeSystem } from "./BiomeSystem.js";
+    import { GrassSystem } from "../vegetation/GrassSystem.js";
+    import { TreeSystem } from "./TreeSystem.js";
+    import { RockSystem } from "./RockSystem.js";
+    import { FlowerSystem } from "./FlowerSystem.js";
+    import { BushSystem } from "./BushSystem.js";
 
-export class ChunkManager {
+    export class ChunkManager {
 
-    constructor({
+        constructor({
 
-        scene,
-        sun,
-        player,
+            scene,
+            sun,
+            player,
 
-        grassSystem = null,
-        surfaceSystem = null,
-        treeSystem = null,
-        rockSystem = null,
-        flowerSystem = null,
-        bushSystem = null,
-        chunkSize = 64,
+            grassSystem = null,
+            surfaceSystem = null,
+            treeSystem = null,
+            rockSystem = null,
+            flowerSystem = null,
+            bushSystem = null,
+            chunkSize = 64,
 
-        viewDistance = 3,
+            viewDistance = 3,
 
-        baseHeight = 0.0,
-        maxHeight = 14.2,
-        heightScale = 6.0,
-        seed = 482917
+            baseHeight = 0.0,
+            maxHeight = 14.2,
+            heightScale = 6.0,
+            seed = 482917
 
-    }) {
+        }) {
 
-        this.scene =
-            scene;
+            this.scene =
+                scene;
 
-        this.sun = sun;
+            this.sun = sun;
 
-        this.player =
-            player;
+            this.player =
+                player;
 
-        this.grassSystem =
-            grassSystem;
+            this.grassSystem =
+                grassSystem;
 
-        this.surfaceSystem =
-            surfaceSystem;
+            this.surfaceSystem =
+                surfaceSystem;
 
-        this.treeSystem =
-            treeSystem;
-        this.rockSystem =
-            rockSystem;
-        this.flowerSystem =
-            flowerSystem;
-        this.bushSystem =
-            bushSystem;
-        this.chunkSize =
-            chunkSize;
-
-        this.viewDistance =
-            viewDistance;
-
-        this.baseHeight =
-            baseHeight;
-
-        this.maxHeight =
-            maxHeight;
-        this.heightScale = heightScale;
-        this.seed =
-            seed;
-
-
-        // ==================================================
-        // BIOME SYSTEM
-        // ==================================================
-
-        this.biomeSystem =
-            new BiomeSystem({
-
-                seed:
-                    this.seed
-
-            });
-
-
-        // ==================================================
-        // TERRAIN LOD
-        // ==================================================
-
-        /*
-         *
-         * LOD 0 = highest quality
-         * LOD 1 = medium
-         * LOD 2 = lowest
-         *
-         */
-
-        this.lodResolutions = [
-
-            32,
-            16,
-            8
-
-        ];
-
-
-        // ==================================================
-        // CHUNKS
-        // ==================================================
-
-        this.chunks =
-            new Map();
-
-
-        // ==================================================
-        // CURRENT PLAYER CHUNK
-        // ==================================================
-
-        this.currentChunkX =
-            null;
-
-        this.currentChunkZ =
-            null;
-
-    }
-
-
-    // ==================================================
-    // CHUNK KEY
+            this.treeSystem =
+                treeSystem;
+            this.rockSystem =
+                rockSystem;
+            this.flowerSystem =
+                flowerSystem;
+            this.bushSystem =
+                bushSystem;
+                // ==================================================
+    // VEGETATION DEBUG TOGGLES
     // ==================================================
 
-    getChunkKey(
-        x,
-        z
-    ) {
+    this.vegetationEnabled = {
 
-        return `${x},${z}`;
-    }
+        grass: true,
+
+        trees: true,
+
+        rocks: true,
+
+        flowers: true,
+
+        bushes: true
+
+    };
+            this.chunkSize =
+                chunkSize;
+
+            this.viewDistance =
+                viewDistance;
+
+            this.baseHeight =
+                baseHeight;
+
+            this.maxHeight =
+                maxHeight;
+            this.heightScale = heightScale;
+            this.seed =
+                seed;
 
 
-    // ==================================================
-    // WORLD → CHUNK
-    // ==================================================
+            // ==================================================
+            // BIOME SYSTEM
+            // ==================================================
 
-    worldToChunk(
-        x,
-        z
-    ) {
+            this.biomeSystem =
+                new BiomeSystem({
 
-        return {
+                    seed:
+                        this.seed
 
-            x:
-                Math.floor(
-                    x /
-                    this.chunkSize
+                });
+
+
+            // ==================================================
+            // TERRAIN LOD
+            // ==================================================
+
+            /*
+            *
+            * LOD 0 = highest quality
+            * LOD 1 = medium
+            * LOD 2 = lowest
+            *
+            */
+
+            this.lodResolutions = [
+
+                32,
+                16,
+                8
+
+            ];
+
+
+            // ==================================================
+            // CHUNKS
+            // ==================================================
+
+            this.chunks =
+                new Map();
+
+
+            // ==================================================
+            // CURRENT PLAYER CHUNK
+            // ==================================================
+
+            this.currentChunkX =
+                null;
+
+            this.currentChunkZ =
+                null;
+
+        }
+
+
+        // ==================================================
+        // CHUNK KEY
+        // ==================================================
+
+        getChunkKey(
+            x,
+            z
+        ) {
+
+            return `${x},${z}`;
+        }
+
+
+        // ==================================================
+        // WORLD → CHUNK
+        // ==================================================
+
+        worldToChunk(
+            x,
+            z
+        ) {
+
+            return {
+
+                x:
+                    Math.floor(
+                        x /
+                        this.chunkSize
+                    ),
+
+                z:
+                    Math.floor(
+                        z /
+                        this.chunkSize
+                    )
+
+            };
+        }
+
+
+        // ==================================================
+        // CHUNK DISTANCE
+        // ==================================================
+
+        getChunkDistance(
+            chunkX,
+            chunkZ,
+            playerChunkX,
+            playerChunkZ
+        ) {
+
+            /*
+            * Chebyshev distance.
+            *
+            * This creates square rings.
+            */
+
+            return Math.max(
+
+                Math.abs(
+                    chunkX -
+                    playerChunkX
                 ),
 
-            z:
-                Math.floor(
-                    z /
-                    this.chunkSize
+                Math.abs(
+                    chunkZ -
+                    playerChunkZ
                 )
 
-        };
-    }
-
-
-    // ==================================================
-    // CHUNK DISTANCE
-    // ==================================================
-
-    getChunkDistance(
-        chunkX,
-        chunkZ,
-        playerChunkX,
-        playerChunkZ
-    ) {
-
-        /*
-         * Chebyshev distance.
-         *
-         * This creates square rings.
-         */
-
-        return Math.max(
-
-            Math.abs(
-                chunkX -
-                playerChunkX
-            ),
-
-            Math.abs(
-                chunkZ -
-                playerChunkZ
-            )
-
-        );
-    }
-
-
-    // ==================================================
-    // GET TERRAIN LOD
-    // ==================================================
-
-    getLOD(
-        distance
-    ) {
-
-        if (
-            distance <= 1
-        ) {
-
-            return 0;
+            );
         }
 
 
-        if (
-            distance <= 2
+        // ==================================================
+        // GET TERRAIN LOD
+        // ==================================================
+
+        getLOD(
+            distance
         ) {
 
-            return 1;
+            if (
+                distance <= 1
+            ) {
+
+                return 0;
+            }
+
+
+            if (
+                distance <= 2
+            ) {
+
+                return 1;
+            }
+
+
+            return 2;
         }
 
 
-        return 2;
-    }
+        // ==================================================
+        // GET RESOLUTION
+        // ==================================================
 
-
-    // ==================================================
-    // GET RESOLUTION
-    // ==================================================
-
-    getResolution(
-        lod
-    ) {
-
-        return this.lodResolutions[
+        getResolution(
             lod
-        ];
-    }
+        ) {
+
+            return this.lodResolutions[
+                lod
+            ];
+        }
 
 
     // ==================================================
@@ -248,6 +265,7 @@ export class ChunkManager {
         chunkZ,
         lod
     ) {
+
 
         const key =
             this.getChunkKey(
@@ -267,6 +285,7 @@ export class ChunkManager {
         ) {
 
             return;
+
         }
 
 
@@ -297,6 +316,7 @@ export class ChunkManager {
         // TERRAIN
         // ==================================================
 
+
         const terrain =
             new TerrainSystem({
 
@@ -312,9 +332,14 @@ export class ChunkManager {
                 baseHeight:
                     this.baseHeight,
 
-                maxHeight: this.maxHeight,
-                heightScale: this.heightScale,
-                seed: this.seed,
+                maxHeight:
+                    this.maxHeight,
+
+                heightScale:
+                    this.heightScale,
+
+                seed:
+                    this.seed,
 
                 worldOffsetX:
                     worldX,
@@ -325,8 +350,11 @@ export class ChunkManager {
                 surfaceSystem:
                     this.surfaceSystem,
 
-                sun: this.sun
+                sun:
+                    this.sun
+
             });
+
 
 
         // ==================================================
@@ -355,17 +383,15 @@ export class ChunkManager {
         // ==================================================
 
         this.chunks.set(
-
             key,
-
             chunk
-
         );
 
 
         // ==================================================
         // BIOME
         // ==================================================
+
 
         const biome =
             this.biomeSystem.getBiome(
@@ -377,447 +403,492 @@ export class ChunkManager {
             );
 
 
-        console.log(
-
-            `Loaded chunk ${chunkX}, ${chunkZ}` +
-            ` | LOD ${lod}` +
-            ` | ${resolution}x${resolution}` +
-            ` | Biome: ${biome.name}`
-
-        );
-
 
         // ==================================================
         // GRASS
         // ==================================================
 
-        if (
-            this.grassSystem
-        ) {
 
-            this.grassSystem.registerTerrainChunk(
-                chunk
-            );
 
-        }
-
-        if (
-    this.treeSystem
-) {
-
-    this.treeSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
     if (
-    this.rockSystem
-) {
-
-    this.rockSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
-if (
-    this.flowerSystem
-) {
-
-    this.flowerSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
-if (
-    this.bushSystem
-) {
-
-    this.bushSystem.registerTerrainChunk(
-        chunk
-    );
-
-}
-
+        this.grassSystem &&
+        this.vegetationEnabled.grass
+    ) {
+        this.grassSystem.registerTerrainChunk(
+            chunk
+        );
     }
 
-// updateShadowUniforms() {
 
-//     for (const chunk of this.chunks.values()) {
+        // ==================================================
+        // TREES
+        // ==================================================
 
-//         if (
-//             chunk.terrain &&
-//             chunk.terrain.updateShadowUniforms
-//         ) {
-//             chunk.terrain.updateShadowUniforms();
-//         }
-//     }
-// }
-    // ==================================================
-    // UPDATE CHUNK LOD
-    // ==================================================
 
-    updateChunkLOD(
-        chunk,
-        newLOD
+    if (
+        this.treeSystem &&
+        this.vegetationEnabled.trees
     ) {
+        this.treeSystem.registerTerrainChunk(
+            chunk
+        );
+    }
 
-        if (
-            chunk.lod ===
+
+
+        // ==================================================
+        // ROCKS
+        // ==================================================
+
+
+
+    if (
+        this.rockSystem &&
+        this.vegetationEnabled.rocks
+    ) {
+        this.rockSystem.registerTerrainChunk(
+            chunk
+        );
+    }
+
+
+
+
+        // ==================================================
+        // FLOWERS
+        // ==================================================
+
+
+
+    if (
+        this.flowerSystem &&
+        this.vegetationEnabled.flowers
+    ) {
+        this.flowerSystem.registerTerrainChunk(
+            chunk
+        );
+    }
+
+
+
+        // ==================================================
+        // BUSHES
+        // ==================================================
+
+
+    if (
+        this.bushSystem &&
+        this.vegetationEnabled.bushes
+    ) {
+        this.bushSystem.registerTerrainChunk(
+            chunk
+        );
+    }
+
+
+    }
+    // updateShadowUniforms() {
+
+    //     for (const chunk of this.chunks.values()) {
+
+    //         if (
+    //             chunk.terrain &&
+    //             chunk.terrain.updateShadowUniforms
+    //         ) {
+    //             chunk.terrain.updateShadowUniforms();
+    //         }
+    //     }
+    // }
+        // ==================================================
+        // UPDATE CHUNK LOD
+        // ==================================================
+
+        updateChunkLOD(
+            chunk,
             newLOD
         ) {
 
-            return;
+            if (
+                chunk.lod ===
+                newLOD
+            ) {
+
+                return;
+            }
+
+
+            // ==================================================
+            // OLD RESOLUTION
+            // ==================================================
+
+            const oldResolution =
+                this.getResolution(
+                    chunk.lod
+                );
+
+
+            // ==================================================
+            // NEW LOD
+            // ==================================================
+
+            chunk.lod =
+                newLOD;
+
+
+            const resolution =
+                this.getResolution(
+                    newLOD
+                );
+
+
+            // ==================================================
+            // TERRAIN
+            // ==================================================
+
+            chunk.terrain.setResolution(
+                resolution
+            );
+
+
+            // ==================================================
+            // GRASS
+            // ==================================================
+
+            /*
+            *
+            * Grass does not need to be regenerated here.
+            *
+            * Its terrain height function is continuous
+            * and deterministic, so the existing grass
+            * positions remain valid.
+            *
+            * Grass has its own visual LOD.
+            *
+            */
+
         }
 
 
         // ==================================================
-        // OLD RESOLUTION
+        // UNLOAD CHUNK
         // ==================================================
 
-        const oldResolution =
-            this.getResolution(
-                chunk.lod
-            );
+        unloadChunk(
+            chunkX,
+            chunkZ
+        ) {
+
+            const key =
+                this.getChunkKey(
+                    chunkX,
+                    chunkZ
+                );
 
 
-        // ==================================================
-        // NEW LOD
-        // ==================================================
-
-        chunk.lod =
-            newLOD;
+            const chunk =
+                this.chunks.get(
+                    key
+                );
 
 
-        const resolution =
-            this.getResolution(
-                newLOD
-            );
+            if (!chunk) {
+
+                return;
+            }
 
 
-        // ==================================================
-        // TERRAIN
-        // ==================================================
+            // ==================================================
+            // GRASS
+            // ==================================================
 
-        chunk.terrain.setResolution(
-            resolution
-        );
+            if (
+                this.grassSystem
+            ) {
 
+                this.grassSystem.unregisterTerrainChunk(
 
-        console.log(
+                    chunkX,
+                    chunkZ
 
-            `LOD changed: ` +
-            `${chunk.x}, ${chunk.z}` +
-            ` → LOD ${newLOD}` +
-            ` (${resolution}x${resolution})`
+                );
 
-        );
-
-
-        // ==================================================
-        // GRASS
-        // ==================================================
-
-        /*
-         *
-         * Grass does not need to be regenerated here.
-         *
-         * Its terrain height function is continuous
-         * and deterministic, so the existing grass
-         * positions remain valid.
-         *
-         * Grass has its own visual LOD.
-         *
-         */
-
-    }
-
-
-    // ==================================================
-    // UNLOAD CHUNK
-    // ==================================================
-
-    unloadChunk(
-        chunkX,
-        chunkZ
+            }
+            if (
+        this.treeSystem
     ) {
 
-        const key =
-            this.getChunkKey(
-                chunkX,
-                chunkZ
-            );
+        this.treeSystem.unregisterTerrainChunk(
+            chunkX,
+            chunkZ
+        );
+
+    }
+    if (
+        this.rockSystem
+    ) {
+
+        this.rockSystem.unregisterTerrainChunk(
+            chunkX,
+            chunkZ
+        );
+
+    }
+    if (
+        this.flowerSystem
+    ) {
+
+        this.flowerSystem.unregisterTerrainChunk(
+            chunkX,
+            chunkZ
+        );
+
+    }
+    if (
+        this.bushSystem
+    ) {
+
+        this.bushSystem.unregisterTerrainChunk(
+            chunkX,
+            chunkZ
+        );
+
+    }
+            // ==================================================
+            // TERRAIN
+            // ==================================================
+
+            chunk.terrain.dispose();
 
 
-        const chunk =
-            this.chunks.get(
+            // ==================================================
+            // REMOVE CHUNK
+            // ==================================================
+
+            this.chunks.delete(
                 key
             );
 
 
-        if (!chunk) {
-
-            return;
         }
 
 
         // ==================================================
-        // GRASS
+        // UPDATE
         // ==================================================
-
-        if (
-            this.grassSystem
-        ) {
-
-            this.grassSystem.unregisterTerrainChunk(
-
-                chunkX,
-                chunkZ
-
-            );
-
-        }
-        if (
-    this.treeSystem
-) {
-
-    this.treeSystem.unregisterTerrainChunk(
-        chunkX,
-        chunkZ
-    );
-
-}
-if (
-    this.rockSystem
-) {
-
-    this.rockSystem.unregisterTerrainChunk(
-        chunkX,
-        chunkZ
-    );
-
-}
-if (
-    this.flowerSystem
-) {
-
-    this.flowerSystem.unregisterTerrainChunk(
-        chunkX,
-        chunkZ
-    );
-
-}
-if (
-    this.bushSystem
-) {
-
-    this.bushSystem.unregisterTerrainChunk(
-        chunkX,
-        chunkZ
-    );
-
-}
-        // ==================================================
-        // TERRAIN
-        // ==================================================
-
-        chunk.terrain.dispose();
-
-
-        // ==================================================
-        // REMOVE CHUNK
-        // ==================================================
-
-        this.chunks.delete(
-            key
-        );
-
-
-        console.log(
-
-            `Unloaded chunk ` +
-            `${chunkX}, ${chunkZ}`
-
-        );
-
-    }
-
-
-    // ==================================================
-    // UPDATE
-    // ==================================================
 
     update() {
+
 
         const playerPosition =
             this.player.getPosition();
 
 
-        const playerChunk =
-            this.worldToChunk(
+            const playerChunk =
+                this.worldToChunk(
 
-                playerPosition.x,
+                    playerPosition.x,
 
-                playerPosition.z
+                    playerPosition.z
 
-            );
-
-
-        // ==================================================
-        // PLAYER STILL IN SAME CHUNK
-        // ==================================================
-
-        if (
-
-            playerChunk.x ===
-            this.currentChunkX &&
-
-            playerChunk.z ===
-            this.currentChunkZ
-
-        ) {
-
-            return;
-        }
+                );
 
 
-        // ==================================================
-        // UPDATE CURRENT CHUNK
-        // ==================================================
+            // ==================================================
+            // PLAYER STILL IN SAME CHUNK
+            // ==================================================
 
-        this.currentChunkX =
-            playerChunk.x;
+            if (
 
-        this.currentChunkZ =
-            playerChunk.z;
+                playerChunk.x ===
+                this.currentChunkX &&
 
-
-        const requiredChunks =
-            new Set();
-
-
-        // ==================================================
-        // LOAD REQUIRED CHUNKS
-        // ==================================================
-
-        for (
-
-            let z =
-                -this.viewDistance;
-
-            z <=
-            this.viewDistance;
-
-            z++
-
-        ) {
-
-            for (
-
-                let x =
-                    -this.viewDistance;
-
-                x <=
-                this.viewDistance;
-
-                x++
+                playerChunk.z ===
+                this.currentChunkZ
 
             ) {
 
-                const chunkX =
-                    playerChunk.x +
-                    x;
-
-                const chunkZ =
-                    playerChunk.z +
-                    z;
+                return;
+            }
 
 
-                // ==================================================
-                // DISTANCE
-                // ==================================================
+            // ==================================================
+            // UPDATE CURRENT CHUNK
+            // ==================================================
 
-                const distance =
-                    this.getChunkDistance(
+            this.currentChunkX =
+                playerChunk.x;
 
-                        chunkX,
+            this.currentChunkZ =
+                playerChunk.z;
 
-                        chunkZ,
 
-                        playerChunk.x,
+            const requiredChunks =
+                new Set();
 
-                        playerChunk.z
 
+            // ==================================================
+            // LOAD REQUIRED CHUNKS
+            // ==================================================
+
+            for (
+
+                let z =
+                    -this.viewDistance;
+
+                z <=
+                this.viewDistance;
+
+                z++
+
+            ) {
+
+                for (
+
+                    let x =
+                        -this.viewDistance;
+
+                    x <=
+                    this.viewDistance;
+
+                    x++
+
+                ) {
+
+                    const chunkX =
+                        playerChunk.x +
+                        x;
+
+                    const chunkZ =
+                        playerChunk.z +
+                        z;
+
+
+                    // ==================================================
+                    // DISTANCE
+                    // ==================================================
+
+                    const distance =
+                        this.getChunkDistance(
+
+                            chunkX,
+
+                            chunkZ,
+
+                            playerChunk.x,
+
+                            playerChunk.z
+
+                        );
+
+
+                    // ==================================================
+                    // LOD
+                    // ==================================================
+
+                    const lod =
+                        this.getLOD(
+                            distance
+                        );
+
+
+                    // ==================================================
+                    // KEY
+                    // ==================================================
+
+                    const key =
+                        this.getChunkKey(
+
+                            chunkX,
+
+                            chunkZ
+
+                        );
+
+
+                    requiredChunks.add(
+                        key
                     );
 
 
-                // ==================================================
-                // LOD
-                // ==================================================
+                    // ==================================================
+                    // LOAD
+                    // ==================================================
 
-                const lod =
-                    this.getLOD(
-                        distance
-                    );
+                    if (
+                        !this.chunks.has(
+                            key
+                        )
+                    ) {
+
+                        this.loadChunk(
+
+                            chunkX,
+
+                            chunkZ,
+
+                            lod
+
+                        );
+
+                    }
+
+                    // ==================================================
+                    // UPDATE LOD
+                    // ==================================================
+
+                    else {
+
+                        const chunk =
+                            this.chunks.get(
+                                key
+                            );
 
 
-                // ==================================================
-                // KEY
-                // ==================================================
+                        this.updateChunkLOD(
+
+                            chunk,
+
+                            lod
+
+                        );
+
+                    }
+
+                }
+
+            }
+
+
+            // ==================================================
+            // UNLOAD DISTANT CHUNKS
+            // ==================================================
+
+            for (
+                const chunk
+                of this.chunks.values()
+            ) {
 
                 const key =
                     this.getChunkKey(
 
-                        chunkX,
+                        chunk.x,
 
-                        chunkZ
+                        chunk.z
 
                     );
 
 
-                requiredChunks.add(
-                    key
-                );
-
-
-                // ==================================================
-                // LOAD
-                // ==================================================
-
                 if (
-                    !this.chunks.has(
+                    !requiredChunks.has(
                         key
                     )
                 ) {
 
-                    this.loadChunk(
+                    this.unloadChunk(
 
-                        chunkX,
+                        chunk.x,
 
-                        chunkZ,
-
-                        lod
-
-                    );
-
-                }
-
-                // ==================================================
-                // UPDATE LOD
-                // ==================================================
-
-                else {
-
-                    const chunk =
-                        this.chunks.get(
-                            key
-                        );
-
-
-                    this.updateChunkLOD(
-
-                        chunk,
-
-                        lod
+                        chunk.z
 
                     );
 
@@ -825,17 +896,29 @@ if (
 
             }
 
-        }
+
+    }
+
+        
 
 
         // ==================================================
-        // UNLOAD DISTANT CHUNKS
+        // TERRAIN HEIGHT
         // ==================================================
 
-        for (
-            const chunk
-            of this.chunks.values()
+        getHeight(
+            x,
+            z
         ) {
+
+            const chunk =
+                this.worldToChunk(
+
+                    x,
+                    z
+
+                );
+
 
             const key =
                 this.getChunkKey(
@@ -847,288 +930,365 @@ if (
                 );
 
 
-            if (
-                !requiredChunks.has(
+            const loadedChunk =
+                this.chunks.get(
                     key
-                )
-            ) {
-
-                this.unloadChunk(
-
-                    chunk.x,
-
-                    chunk.z
-
                 );
 
+
+            /*
+            * If the requested terrain chunk is not
+            * loaded, use the base height.
+            */
+
+            if (
+                !loadedChunk
+            ) {
+
+                return this.baseHeight;
             }
 
-        }
 
-    }
-
-
-    // ==================================================
-    // TERRAIN HEIGHT
-    // ==================================================
-
-    getHeight(
-        x,
-        z
-    ) {
-
-        const chunk =
-            this.worldToChunk(
+            return loadedChunk.terrain.getHeight(
 
                 x,
+
                 z
 
             );
 
-
-        const key =
-            this.getChunkKey(
-
-                chunk.x,
-
-                chunk.z
-
-            );
+        }
 
 
-        const loadedChunk =
-            this.chunks.get(
-                key
-            );
+        // ==================================================
+        // GET CHUNK
+        // ==================================================
 
-
-        /*
-         * If the requested terrain chunk is not
-         * loaded, use the base height.
-         */
-
-        if (
-            !loadedChunk
+        getChunk(
+            chunkX,
+            chunkZ
         ) {
 
-            return this.baseHeight;
+            return this.chunks.get(
+
+                this.getChunkKey(
+                    chunkX,
+                    chunkZ
+                )
+
+            );
+
         }
 
 
-        return loadedChunk.terrain.getHeight(
+        // ==================================================
+        // GET BIOME SYSTEM
+        // ==================================================
 
-            x,
+        getBiomeSystem() {
 
-            z
+            return this.biomeSystem;
 
-        );
-
-    }
+        }
 
 
+        // ==================================================
+        // DEBUG INFORMATION
+        // ==================================================
+
+        getLoadedChunkCount() {
+
+            return this.chunks.size;
+
+        }
+
+        // ==================================================
+        // DEBUG MAPS
+        // ==================================================
+
+        generateDisplacementMap(
+            chunkX = 0,
+            chunkZ = 0,
+            resolution = 512
+        ) {
+
+            const chunk =
+                this.getChunk(
+                    chunkX,
+                    chunkZ
+                );
+
+            if (!chunk) {
+
+                console.warn(
+                    `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+                );
+
+                return null;
+            }
+
+            return chunk.terrain.generateDisplacementMap(
+                resolution
+            );
+        }
+
+
+        // ==================================================
+        // SURFACE MAP
+        // ==================================================
+
+        generateSurfaceMap(
+            chunkX = 0,
+            chunkZ = 0,
+            resolution = 512
+        ) {
+
+            const chunk =
+                this.getChunk(
+                    chunkX,
+                    chunkZ
+                );
+
+            if (!chunk) {
+
+                console.warn(
+                    `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+                );
+
+                return null;
+            }
+
+            return chunk.terrain.generateSurfaceMap(
+                resolution
+            );
+        }
+        // ==================================================
+        // GENERATE DISPLACEMENT MAP
+        // ==================================================
+
+        generateDisplacementMap(
+            chunkX = 0,
+            chunkZ = 0,
+            resolution = 512
+        ) {
+
+            const chunk =
+                this.getChunk(
+                    chunkX,
+                    chunkZ
+                );
+
+
+            if (!chunk) {
+
+                console.warn(
+                    `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+                );
+
+                return null;
+
+            }
+
+
+            return chunk.terrain.generateDisplacementMap(
+                resolution
+            );
+
+        }
+
+
+        // ==================================================
+        // GENERATE SURFACE MAP
+        // ==================================================
+
+        generateSurfaceMap(
+            chunkX = 0,
+            chunkZ = 0,
+            resolution = 512
+        ) {
+
+            const chunk =
+                this.getChunk(
+                    chunkX,
+                    chunkZ
+                );
+
+
+            if (!chunk) {
+
+                console.warn(
+                    `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+                );
+
+                return null;
+
+            }
+
+
+            return chunk.terrain.generateSurfaceMap(
+                resolution
+            );
+
+        }
+        // ==================================================
+    // VEGETATION DEBUG CONTROL
     // ==================================================
-    // GET CHUNK
-    // ==================================================
 
-    getChunk(
-        chunkX,
-        chunkZ
+    setVegetationEnabled(
+        type,
+        enabled
     ) {
 
-        return this.chunks.get(
-
-            this.getChunkKey(
-                chunkX,
-                chunkZ
+        if (
+            !Object.prototype.hasOwnProperty.call(
+                this.vegetationEnabled,
+                type
             )
-
-        );
-
-    }
-
-
-    // ==================================================
-    // GET BIOME SYSTEM
-    // ==================================================
-
-    getBiomeSystem() {
-
-        return this.biomeSystem;
-
-    }
-
-
-    // ==================================================
-    // DEBUG INFORMATION
-    // ==================================================
-
-    getLoadedChunkCount() {
-
-        return this.chunks.size;
-
-    }
-
-    // ==================================================
-    // DEBUG MAPS
-    // ==================================================
-
-    generateDisplacementMap(
-        chunkX = 0,
-        chunkZ = 0,
-        resolution = 512
-    ) {
-
-        const chunk =
-            this.getChunk(
-                chunkX,
-                chunkZ
-            );
-
-        if (!chunk) {
+        ) {
 
             console.warn(
-                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
+                `Unknown vegetation type: ${type}`
             );
 
-            return null;
+            return;
+
         }
 
-        return chunk.terrain.generateDisplacementMap(
-            resolution
-        );
-    }
+        this.vegetationEnabled[type] =
+            enabled;
 
+        const systemMap = {
 
-    // ==================================================
-    // SURFACE MAP
-    // ==================================================
+            grass:
+                this.grassSystem,
 
-    generateSurfaceMap(
-        chunkX = 0,
-        chunkZ = 0,
-        resolution = 512
-    ) {
+            trees:
+                this.treeSystem,
 
-        const chunk =
-            this.getChunk(
-                chunkX,
-                chunkZ
-            );
+            rocks:
+                this.rockSystem,
 
-        if (!chunk) {
+            flowers:
+                this.flowerSystem,
 
-            console.warn(
-                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-            );
+            bushes:
+                this.bushSystem
 
-            return null;
-        }
+        };
 
-        return chunk.terrain.generateSurfaceMap(
-            resolution
-        );
-    }
-    // ==================================================
-    // GENERATE DISPLACEMENT MAP
-    // ==================================================
+        const system =
+            systemMap[type];
 
-    generateDisplacementMap(
-        chunkX = 0,
-        chunkZ = 0,
-        resolution = 512
-    ) {
+        if (!system) {
 
-        const chunk =
-            this.getChunk(
-                chunkX,
-                chunkZ
-            );
-
-
-        if (!chunk) {
-
-            console.warn(
-                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-            );
-
-            return null;
+            return;
 
         }
 
 
-        return chunk.terrain.generateDisplacementMap(
-            resolution
-        );
+        // --------------------------------------------------
+        // DESPAWN
+        // --------------------------------------------------
 
-    }
+        if (!enabled) {
 
+            for (
+                const chunk
+                of this.chunks.values()
+            ) {
 
-    // ==================================================
-    // GENERATE SURFACE MAP
-    // ==================================================
+                system.unregisterTerrainChunk(
+                    chunk.x,
+                    chunk.z
+                );
 
-    generateSurfaceMap(
-        chunkX = 0,
-        chunkZ = 0,
-        resolution = 512
-    ) {
+            }
 
-        const chunk =
-            this.getChunk(
-                chunkX,
-                chunkZ
-            );
-
-
-        if (!chunk) {
-
-            console.warn(
-                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-            );
-
-            return null;
+            return;
 
         }
 
 
-        return chunk.terrain.generateSurfaceMap(
-            resolution
-        );
-
-    }
-    // ==================================================
-    // DISPOSE
-    // ==================================================
-
-    dispose() {
+        // --------------------------------------------------
+        // RESPAWN
+        // --------------------------------------------------
 
         for (
             const chunk
             of this.chunks.values()
         ) {
 
-            if (
-                this.grassSystem
+            system.registerTerrainChunk(
+                chunk
+            );
+
+        }
+
+    }
+    // ==================================================
+    // TOGGLE ALL VEGETATION
+    // ==================================================
+
+    setAllVegetationEnabled(
+        enabled
+    ) {
+
+        const types = [
+
+            "grass",
+            "trees",
+            "rocks",
+            "flowers",
+            "bushes"
+
+        ];
+
+        for (
+            const type
+            of types
+        ) {
+
+            this.setVegetationEnabled(
+                type,
+                enabled
+            );
+
+        }
+
+    }
+        // ==================================================
+        // DISPOSE
+        // ==================================================
+
+        dispose() {
+
+            for (
+                const chunk
+                of this.chunks.values()
             ) {
 
-                this.grassSystem.unregisterTerrainChunk(
+                if (
+                    this.grassSystem
+                ) {
 
-                    chunk.x,
+                    this.grassSystem.unregisterTerrainChunk(
 
-                    chunk.z
+                        chunk.x,
 
-                );
+                        chunk.z
+
+                    );
+
+                }
+
+
+                chunk.terrain.dispose();
 
             }
 
 
-            chunk.terrain.dispose();
+            this.chunks.clear();
 
         }
 
-
-        this.chunks.clear();
-
     }
-
-}

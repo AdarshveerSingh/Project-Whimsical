@@ -200,16 +200,15 @@ export class TreeSystem {
                         // APPLY LEAF SHADER
                         // ------------------------------------------------
 
-                        if (
-                            isLeaf
-                        ) {
+  if (isLeaf) {
 
-                            material =
-                                this.createLeafMaterial(
-                                    material
-                                );
+    material =
+        this.createLeafMaterial(
+            material,
+            bounds
+        );
 
-                        }
+}
 
 
                         // ------------------------------------------------
@@ -338,45 +337,38 @@ export class TreeSystem {
     // CREATE LEAF MATERIAL
     // ============================================================
 
-    createLeafMaterial(
-        originalMaterial
-    ) {
+createLeafMaterial(originalMaterial, leafBounds) {
 
-        console.log(
-            "Applying leaf shader to:",
-            originalMaterial.name || "unnamed material"
-        );
+    console.log(
+        "Applying leaf shader to:",
+        originalMaterial.name || "unnamed material"
+    );
 
+    const leafMaterial = applyLeafShader(
+        originalMaterial,
+        {
+            windStrength: 0.28,
+            windSpeed: 1.2,
+            windScale: 0.8,
 
-        const leafMaterial =
-            applyLeafShader(
-                originalMaterial,
-                {
+            leafColor:
+                new THREE.Color(
+                    0.32,
+                    0.72,
+                    0.18
+                ),
 
-                    windStrength:
-                        0.28,
+            // ----------------------------------------------------
+            // PLAYGROUND STYLE NOISE
+            // ----------------------------------------------------
 
-                    windSpeed:
-                        1.2,
+            leafMin: leafBounds.min.clone(),
+            leafMax: leafBounds.max.clone()
+        }
+    );
 
-                    windScale:
-                        0.8,
-
-                    leafColor:
-                        new THREE.Color(
-                            0.32,
-                            0.72,
-                            0.18
-                        )
-
-                }
-            );
-
-
-        return leafMaterial;
-
-    }
-
+    return leafMaterial;
+}
 
     // ============================================================
     // DETERMINISTIC RANDOM

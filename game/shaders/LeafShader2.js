@@ -1,8 +1,8 @@
 import * as THREE from "three";
 
+
 // ============================================================
 // LEAF SHADER
-// MeshStandardMaterial + wind + 1-octave procedural simplex
 // ============================================================
 
 export function applyLeafShader(
@@ -12,222 +12,920 @@ export function applyLeafShader(
         windSpeed = 1.2,
         windScale = 0.8,
 
-        leafColor =
-            new THREE.Color(
-                0.32,
-                0.72,
-                0.18
-            )
+        leafMin = new THREE.Vector3(0, 0, 0),
+        leafMax = new THREE.Vector3(1, 1, 1)
     } = {}
 ) {
 
-    // ========================================================
-    // ORIGINAL GLB TEXTURE
-    // ========================================================
+    // --------------------------------------------------------
+    // MATERIAL
+    // --------------------------------------------------------
 
-    const texture =
-        originalMaterial.map;
+    const material =
+        originalMaterial.clone();
 
-    console.log(
-        "Leaf texture:",
-        texture
-    );
+    material.transparent = false;
+    material.depthWrite = true;
+    material.depthTest = true;
+    material.side = THREE.DoubleSide;
 
-    console.log(
-        "Leaf alphaMap:",
-        originalMaterial.alphaMap
-    );
+    material.roughness = 0.85;
+    material.metalness = 0.0;
 
-    if (!texture) {
+    material.fog = true;
 
-        console.error(
-            "LEAF SHADER ERROR: No texture found."
-        );
-
-        return originalMaterial;
+    if (material.map) {
+        material.map.wrapS = THREE.RepeatWrapping;
+        material.map.wrapT = THREE.RepeatWrapping;
     }
 
+
     // ========================================================
-    // VISIBLE MATERIAL
+    // SHADER COMPILE
     // ========================================================
 
-    const leafMaterial =
-        new THREE.MeshStandardMaterial({
+    material.onBeforeCompile = (shader) => {
 
+        // ----------------------------------------------------
+        // WIND UNIFORMS
+        // ----------------------------------------------------
+
+        shader.uniforms.uLeafTime = {
+            value: 0
+        };
+
+        shader.uniforms.uWindStrength = {
+            value: windStrength
+        };
+
+        shader.uniforms.uWindSpeed = {
+            value: windSpeed
+        };
+
+        shader.uniforms.uWindScale = {
+            value: windScale
+        };
+
+
+        // ----------------------------------------------------
+        // PALETTE
+        // ----------------------------------------------------
+
+        shader.uniforms.uColor0 = {
+            value: new THREE.Color("#213a35")
+        };
+
+        shader.uniforms.uColor1 = {
+            value: new THREE.Color("#57b6a3")
+        };
+
+        shader.uniforms.uColor2 = {
+            value: new THREE.Color("#62ac96")
+        };
+
+        shader.uniforms.uColor3 = {
+            value: new THREE.Color("#56f6ab")
+        };
+
+
+        // ----------------------------------------------------
+        // NOISE
+        // ----------------------------------------------------
+
+        shader.uniforms.uNoiseScale = {
+            value: 2.0
+        };
+
+        shader.uniforms.uNoiseContrast = {
+            value: 1.23
+        };
+
+        shader.uniforms.uNoiseBrightness = {
+            value: 0.0
+        };
+
+        shader.uniforms.uNoiseThreshold = {
+            value: 0.43
+        };
+
+        shader.uniforms.uNoiseSoftness = {
+            value: 0.496
+        };
+
+        shader.uniforms.uProjectionScale = {
+            value: 0.25
+        };
+
+        shader.uniforms.uMapRotation = {
+            value: THREE.MathUtils.degToRad(30)
+        };
+
+        shader.uniforms.uOffsetX = {
+            value: 0.35
+        };
+
+        shader.uniforms.uOffsetY = {
+            value: 0.455
+        };
+
+
+        // ----------------------------------------------------
+        // MODEL BOUNDS
+        // ----------------------------------------------------
+
+        shader.uniforms.uLeafMin = {
+            value: leafMin.clone()
+        };
+
+        shader.uniforms.uLeafMax = {
+            value: leafMax.clone()
+        };
+
+
+        // ====================================================
+        // VERTEX SHADER
+        // ====================================================
+
+        shader.vertexShader =
+            shader.vertexShader.replace(
+
+                "#include <common>",
+
+                `
+                #include <common>
+
+uniform float uLeafTime;
+uniform float uWindStrength;
+uniform float uWindSpeed;
+uniform float uWindScale;
+
+uniform vec3 uLeafMin;
+uniform vec3 uLeafMax;
+
+varying vec3 vLeafLocalPosition;
+varying vec2 vLeafMapUv;
+                `
+            );
+
+
+        // ----------------------------------------------------
+        // IMPORTANT:
+        // ONE begin_vertex replacement only.
+        //
+        // This preserves the original wind logic while also
+        // capturing the position BEFORE wind is applied.
+        // ----------------------------------------------------
+
+        shader.vertexShader =
+            shader.vertexShader.replace(
+
+                "#include <begin_vertex>",
+
+                `
+#include <begin_vertex>
+
+vLeafLocalPosition = position;
+vLeafMapUv = uv;
+
+
+// ============================================================
+// WIND
+// ============================================================
+
+float windTime =
+    uLeafTime * uWindSpeed;
+
+
+// ------------------------------------------------------------
+// ONE PHASE PER TREE
+// ------------------------------------------------------------
+
+float treeWindPhase = 0.0;
+
+#ifdef USE_INSTANCING
+
+    treeWindPhase =
+        instanceMatrix[3].x * 0.017 +
+        instanceMatrix[3].z * 0.013;
+
+#else
+
+    treeWindPhase =
+        modelMatrix[3].x * 0.017 +
+        modelMatrix[3].z * 0.013;
+
+#endif
+
+
+// ------------------------------------------------------------
+// LARGE SWAY
+// ------------------------------------------------------------
+
+float wave1 =
+    sin(
+        windTime +
+        treeWindPhase
+    );
+
+float wave2 =
+    sin(
+        windTime * 1.73 +
+        treeWindPhase * 1.37
+    );
+
+float wave3 =
+    sin(
+        windTime * 3.91 +
+        treeWindPhase * 2.71
+    );
+
+float combinedWind =
+    wave1 * 0.55 +
+    wave2 * 0.30 +
+    wave3 * 0.15;
+
+
+// ------------------------------------------------------------
+// HEIGHT
+// ------------------------------------------------------------
+
+float leafHeight =
+    max(
+        uLeafMax.y -
+        uLeafMin.y,
+        0.0001
+    );
+
+float normalizedHeight =
+    clamp(
+        (
+            position.y -
+            uLeafMin.y
+        ) /
+        leafHeight,
+        0.0,
+        1.0
+    );
+
+float heightMask =
+    smoothstep(
+        0.0,
+        1.0,
+        normalizedHeight
+    );
+
+
+// ------------------------------------------------------------
+// MAIN SWAY
+// ------------------------------------------------------------
+
+float sway =
+    combinedWind *
+    uWindStrength *
+    heightMask;
+
+transformed.x += sway;
+
+transformed.z +=
+    sway * 0.35;
+
+
+// ------------------------------------------------------------
+// SMALL LEAF FLUTTER
+// ------------------------------------------------------------
+
+float leafFlutterPhase =
+    position.x * 0.17 +
+    position.z * 0.13;
+
+float flutter =
+    sin(
+        windTime * 3.7 +
+        treeWindPhase * 5.1 +
+        leafFlutterPhase
+    ) *
+    0.035 *
+    heightMask;
+
+transformed.x += flutter;
+
+transformed.z +=
+    flutter * 0.5;
+                `
+            );
+
+
+        // ====================================================
+        // FRAGMENT SHADER
+        // ====================================================
+
+        shader.fragmentShader =
+            shader.fragmentShader.replace(
+
+                "#include <common>",
+
+                `
+                #include <common>
+
+                uniform vec3 uColor0;
+                uniform vec3 uColor1;
+                uniform vec3 uColor2;
+                uniform vec3 uColor3;
+
+                uniform float uNoiseScale;
+                uniform float uNoiseContrast;
+                uniform float uNoiseBrightness;
+                uniform float uNoiseThreshold;
+                uniform float uNoiseSoftness;
+
+                uniform float uProjectionScale;
+                uniform float uMapRotation;
+
+                uniform float uOffsetX;
+                uniform float uOffsetY;
+
+                uniform vec3 uLeafMin;
+                uniform vec3 uLeafMax;
+
+                varying vec3 vLeafLocalPosition;
+                varying vec2 vLeafMapUv;
+                `
+            );
+
+
+        // ====================================================
+        // PROCEDURAL COLOR
+        // ====================================================
+
+        shader.fragmentShader =
+            shader.fragmentShader.replace(
+
+                "#include <color_fragment>",
+
+                `
+
+                // ------------------------------------------------
+                // ORIGINAL TEXTURE
+                //
+                // "map" already exists because this is a
+                // MeshStandardMaterial.
+                // DO NOT redeclare it.
+                // ------------------------------------------------
+
+                vec4 leafSample =
+                    texture2D(
+                        map,
+                        vLeafMapUv
+                    );
+
+
+                // Preserve alpha from the original leaf texture.
+
+                diffuseColor.a *=
+                    leafSample.a;
+
+
+                if (diffuseColor.a < 0.5) {
+                    discard;
+                }
+
+
+                // ------------------------------------------------
+                // NORMALIZE POSITION USING MODEL BOUNDS
+                // ------------------------------------------------
+
+                vec3 leafSize =
+                    max(
+                        uLeafMax -
+                        uLeafMin,
+
+                        vec3(0.0001)
+                    );
+
+
+                vec3 normalizedLeafPosition =
+                    (
+                        vLeafLocalPosition -
+                        uLeafMin
+                    ) /
+                    leafSize;
+
+
+                // ------------------------------------------------
+                // YZ PROJECTION
+                // ------------------------------------------------
+
+                vec2 noiseUV =
+                    normalizedLeafPosition.yz;
+
+
+                noiseUV *=
+                    uProjectionScale *
+                    uNoiseScale;
+
+
+                // ------------------------------------------------
+                // ROTATION
+                // ------------------------------------------------
+
+                float noiseCos =
+                    cos(uMapRotation);
+
+                float noiseSin =
+                    sin(uMapRotation);
+
+
+                noiseUV =
+                    mat2(
+                        noiseCos,
+                        -noiseSin,
+
+                        noiseSin,
+                        noiseCos
+                    ) *
+                    noiseUV;
+
+
+                // ------------------------------------------------
+                // OFFSET
+                // ------------------------------------------------
+
+                noiseUV +=
+                    vec2(
+                        uOffsetX,
+                        uOffsetY
+                    );
+
+
+                // ------------------------------------------------
+                // MIRROR
+                // ------------------------------------------------
+
+                noiseUV =
+                    abs(noiseUV);
+
+
+                // =================================================
+                // SIMPLEX 2D
+                // =================================================
+
+                vec2 simplexCell =
+                    floor(
+                        noiseUV +
+                        dot(
+                            noiseUV,
+                            vec2(0.3660254)
+                        )
+                    );
+
+
+                vec2 simplexX0 =
+                    noiseUV -
+                    simplexCell +
+                    dot(
+                        simplexCell,
+                        vec2(0.2113249)
+                    );
+
+
+                vec2 simplexI1;
+
+                if (
+                    simplexX0.x >
+                    simplexX0.y
+                ) {
+
+                    simplexI1 =
+                        vec2(1.0, 0.0);
+
+                } else {
+
+                    simplexI1 =
+                        vec2(0.0, 1.0);
+                }
+
+
+                vec2 simplexX1 =
+                    simplexX0 -
+                    simplexI1 +
+                    0.2113249;
+
+
+                vec2 simplexX2 =
+                    simplexX0 -
+                    1.0 +
+                    0.4226498;
+
+
+                // ------------------------------------------------
+                // HASHED GRADIENTS
+                // ------------------------------------------------
+
+                vec3 simplexP0 =
+                    vec3(
+                        simplexCell,
+                        0.0
+                    );
+
+
+                vec3 simplexP1 =
+                    vec3(
+                        simplexCell +
+                        simplexI1,
+                        0.0
+                    );
+
+
+                vec3 simplexP2 =
+                    vec3(
+                        simplexCell +
+                        1.0,
+                        0.0
+                    );
+
+
+                vec2 simplexG0 =
+                    normalize(
+                        vec2(
+                            sin(
+                                dot(
+                                    simplexP0,
+                                    vec3(
+                                        127.1,
+                                        311.7,
+                                        74.7
+                                    )
+                                )
+                            ),
+
+                            cos(
+                                dot(
+                                    simplexP0,
+                                    vec3(
+                                        269.5,
+                                        183.3,
+                                        246.1
+                                    )
+                                )
+                            )
+                        )
+                    );
+
+
+                vec2 simplexG1 =
+                    normalize(
+                        vec2(
+                            sin(
+                                dot(
+                                    simplexP1,
+                                    vec3(
+                                        127.1,
+                                        311.7,
+                                        74.7
+                                    )
+                                )
+                            ),
+
+                            cos(
+                                dot(
+                                    simplexP1,
+                                    vec3(
+                                        269.5,
+                                        183.3,
+                                        246.1
+                                    )
+                                )
+                            )
+                        )
+                    );
+
+
+                vec2 simplexG2 =
+                    normalize(
+                        vec2(
+                            sin(
+                                dot(
+                                    simplexP2,
+                                    vec3(
+                                        127.1,
+                                        311.7,
+                                        74.7
+                                    )
+                                )
+                            ),
+
+                            cos(
+                                dot(
+                                    simplexP2,
+                                    vec3(
+                                        269.5,
+                                        183.3,
+                                        246.1
+                                    )
+                                )
+                            )
+                        )
+                    );
+
+
+                // ------------------------------------------------
+                // CONTRIBUTIONS
+                // ------------------------------------------------
+
+                float simplexN0 =
+                    dot(
+                        simplexG0,
+                        simplexX0
+                    );
+
+
+                float simplexN1 =
+                    dot(
+                        simplexG1,
+                        simplexX1
+                    );
+
+
+                float simplexN2 =
+                    dot(
+                        simplexG2,
+                        simplexX2
+                    );
+
+
+                float simplexT0 =
+                    max(
+                        0.5 -
+                        dot(
+                            simplexX0,
+                            simplexX0
+                        ),
+
+                        0.0
+                    );
+
+
+                float simplexT1 =
+                    max(
+                        0.5 -
+                        dot(
+                            simplexX1,
+                            simplexX1
+                        ),
+
+                        0.0
+                    );
+
+
+                float simplexT2 =
+                    max(
+                        0.5 -
+                        dot(
+                            simplexX2,
+                            simplexX2
+                        ),
+
+                        0.0
+                    );
+
+
+                float leafNoise =
+                    70.0 *
+                    (
+                        simplexT0 *
+                        simplexT0 *
+                        simplexT0 *
+                        simplexT0 *
+                        simplexN0 +
+
+                        simplexT1 *
+                        simplexT1 *
+                        simplexT1 *
+                        simplexT1 *
+                        simplexN1 +
+
+                        simplexT2 *
+                        simplexT2 *
+                        simplexT2 *
+                        simplexT2 *
+                        simplexN2
+                    );
+
+
+                // ------------------------------------------------
+                // NORMALIZE
+                // ------------------------------------------------
+
+                leafNoise =
+                    leafNoise * 0.5 +
+                    0.5;
+
+
+                // ------------------------------------------------
+                // CONTRAST / BRIGHTNESS
+                // ------------------------------------------------
+
+                leafNoise =
+                    clamp(
+                        (
+                            leafNoise -
+                            0.5
+                        ) *
+                        uNoiseContrast +
+                        0.5 +
+                        uNoiseBrightness,
+
+                        0.0,
+                        1.0
+                    );
+
+
+                // ------------------------------------------------
+                // THRESHOLD
+                // ------------------------------------------------
+
+                float noiseLower =
+                    uNoiseThreshold -
+                    uNoiseSoftness;
+
+
+                float noiseUpper =
+                    uNoiseThreshold +
+                    uNoiseSoftness;
+
+
+                leafNoise =
+                    smoothstep(
+                        noiseLower,
+                        noiseUpper,
+                        leafNoise
+                    );
+
+
+                // =================================================
+                // FOUR COLOR PALETTE
+                // =================================================
+
+                vec3 leafPalette;
+
+
+                if (
+                    leafNoise <
+                    0.333333
+                ) {
+
+                    float paletteT =
+                        leafNoise /
+                        0.333333;
+
+
+                    leafPalette =
+                        mix(
+                            uColor0,
+                            uColor1,
+                            paletteT
+                        );
+
+                }
+
+                else if (
+                    leafNoise <
+                    0.666666
+                ) {
+
+                    float paletteT =
+                        (
+                            leafNoise -
+                            0.333333
+                        ) /
+                        0.333333;
+
+
+                    leafPalette =
+                        mix(
+                            uColor1,
+                            uColor2,
+                            paletteT
+                        );
+
+                }
+
+                else {
+
+                    float paletteT =
+                        (
+                            leafNoise -
+                            0.666666
+                        ) /
+                        0.333334;
+
+
+                    leafPalette =
+                        mix(
+                            uColor2,
+                            uColor3,
+                            paletteT
+                        );
+                }
+
+
+                // ------------------------------------------------
+                // ORIGINAL TEXTURE BRIGHTNESS
+                // ------------------------------------------------
+
+                float textureBrightness =
+                    dot(
+                        leafSample.rgb,
+                        vec3(
+                            0.2126,
+                            0.7152,
+                            0.0722
+                        )
+                    );
+
+
+                float leafBrightness =
+                    mix(
+                        0.75,
+                        1.15,
+                        textureBrightness
+                    );
+
+
+                leafPalette *=
+                    leafBrightness;
+
+
+                // ------------------------------------------------
+                // APPLY PALETTE
+                // ------------------------------------------------
+
+                diffuseColor.rgb =
+                    leafPalette;
+
+                `
+            );
+            material.userData.shader = shader;
+    };
+
+
+    // ============================================================
+    // SHADOW MATERIAL
+    // ============================================================
+
+    const shadowMaterial =
+        new THREE.MeshBasicMaterial({
             map:
-                texture,
+                originalMaterial.map ||
+                null,
 
-            // KEEP EXISTING ALPHA CUTTING
-            alphaTest:
-                0.5,
+            transparent: true,
+            alphaTest: 0.5,
 
-            transparent:
-                false,
+            depthWrite: true,
+            depthTest: true,
 
-            depthWrite:
-                true,
+            side: THREE.DoubleSide,
 
-            depthTest:
-                true,
-
-            side:
-                THREE.DoubleSide,
-
-            // NORMAL STANDARD MATERIAL LIGHTING
-            roughness:
-                0.85,
-
-            metalness:
-                0.0,
-
-            // Base tint
-            color:
-                new THREE.Color(
-                    1.0,
-                    1.0,
-                    1.0
-                ),
-
-            // NORMAL THREE.JS FOG
-            fog:
-                true
+            color: 0x000000
         });
 
-    // ========================================================
-    // CUSTOM SHADER MODIFICATION
-    // ========================================================
 
-    leafMaterial.onBeforeCompile =
+    shadowMaterial.onBeforeCompile =
         (shader) => {
-
-            // ==================================================
-            // UNIFORMS
-            // ==================================================
 
             shader.uniforms.uLeafTime = {
                 value: 0
             };
 
             shader.uniforms.uWindStrength = {
-                value:
-                    windStrength
+                value: windStrength
             };
 
             shader.uniforms.uWindSpeed = {
-                value:
-                    windSpeed
+                value: windSpeed
             };
 
             shader.uniforms.uWindScale = {
-                value:
-                    windScale
+                value: windScale
             };
 
-            // ==================================================
-            // PROCEDURAL SIMPLEX PALETTE
-            // One projection (YZ) + one simplex octave.
-            // ==================================================
 
-            shader.uniforms.uNoiseSeed = {
-                value: 482917
-            };
+            shader.vertexShader =
+                shader.vertexShader.replace(
 
-            shader.uniforms.uNoiseScale = {
-                value: 2.0
-            };
+                    "#include <common>",
 
-            shader.uniforms.uNoiseContrast = {
-                value: 0.23
-            };
+                    `
+                    #include <common>
 
-            shader.uniforms.uNoiseBrightness = {
-                value: 0.0
-            };
+                    uniform float uLeafTime;
+                    uniform float uWindStrength;
+                    uniform float uWindSpeed;
+                    uniform float uWindScale;
+                    `
+                );
 
-            shader.uniforms.uNoiseThreshold = {
-                value: 0.43
-            };
-
-            shader.uniforms.uNoiseSoftness = {
-                value: 0.496
-            };
-
-            shader.uniforms.uProjectionScale = {
-                value: 0.25
-            };
-
-            shader.uniforms.uProjectionRotation = {
-                value:
-                    THREE.MathUtils.degToRad(
-                        30.0
-                    )
-            };
-
-            shader.uniforms.uProjectionOffset = {
-                value:
-                    new THREE.Vector2(
-                        0.35,
-                        0.455
-                    )
-            };
-
-            shader.uniforms.uNoiseInvert = {
-                value: true
-            };
-
-            shader.uniforms.uColor0 = {
-                value:
-                    new THREE.Color(
-                        "#2f755d"
-                    )
-            };
-
-            shader.uniforms.uColor1 = {
-                value:
-                    new THREE.Color(
-                        "#409179"
-                    )
-            };
-
-            shader.uniforms.uColor2 = {
-                value:
-                    new THREE.Color(
-                        "#6abb94"
-                    )
-            };
-
-            shader.uniforms.uColor3 = {
-                value:
-                    new THREE.Color(
-                        "#c0fc6d"
-                    )
-            };
-
-            // ==================================================
-            // STORE COMPILED SHADER
-            // ==================================================
-
-            leafMaterial.userData.leafShader =
-                shader;
-
-            // ==================================================
-            // VERTEX UNIFORMS
-            // ==================================================
-
-            shader.vertexShader = `
-
-                uniform float uLeafTime;
-                uniform float uWindStrength;
-                uniform float uWindSpeed;
-                uniform float uWindScale;
-
-                varying vec3 vLeafPosition;
-
-            ` + shader.vertexShader;
-
-            // ==================================================
-            // WIND
-            // ==================================================
 
             shader.vertexShader =
                 shader.vertexShader.replace(
@@ -235,804 +933,14 @@ export function applyLeafShader(
                     "#include <begin_vertex>",
 
                     `
-
                     #include <begin_vertex>
 
-                    // =========================================
-                    // ORIGINAL LEAF LOCAL POSITION
-                    // Captured BEFORE wind displacement.
-                    // =========================================
-
-                    vLeafPosition =
-                        transformed;
-
-                    // =========================================
-                    // WORLD POSITION
-                    // =========================================
-
-                    vec3 leafWorldPos =
-                        (
-                            modelMatrix *
-                            vec4(
-                                transformed,
-                                1.0
-                            )
-                        ).xyz;
-
-                    // =========================================
-                    // WIND PHASE
-                    // =========================================
-
-                    float leafPhase =
-                        leafWorldPos.x *
-                        uWindScale *
-                        0.35
-
-                        +
-
-                        leafWorldPos.z *
-                        uWindScale *
-                        0.25
-
-                        +
-
+                    float shadowWindTime =
                         uLeafTime *
                         uWindSpeed;
 
-                    // =========================================
-                    // WIND WAVES
-                    // =========================================
 
-                    float wind1 =
-                        sin(
-                            leafPhase
-                        );
-
-                    float wind2 =
-                        sin(
-                            leafPhase *
-                            1.73
-                            +
-                            2.4
-                        );
-
-                    float wind3 =
-                        sin(
-                            leafPhase *
-                            3.91
-                            +
-                            1.2
-                        );
-
-                    float wind =
-                        wind1 * 0.55
-                        +
-                        wind2 * 0.30
-                        +
-                        wind3 * 0.15;
-
-                    // =========================================
-                    // HEIGHT MASK
-                    // =========================================
-
-                    float leafHeight =
-                        clamp(
-                            position.y *
-                            0.5 +
-                            0.5,
-                            0.20,
-                            1.0
-                        );
-
-                    // =========================================
-                    // MAIN SWAY
-                    // =========================================
-
-                    transformed.x +=
-                        wind *
-                        uWindStrength *
-                        leafHeight;
-
-                    transformed.z +=
-                        wind *
-                        uWindStrength *
-                        0.40 *
-                        leafHeight;
-
-                    // =========================================
-                    // FLUTTER
-                    // =========================================
-
-                    float flutter =
-                        sin(
-                            uLeafTime *
-                            uWindSpeed *
-                            2.5
-
-                            +
-
-                            leafWorldPos.x *
-                            4.0
-
-                            +
-
-                            leafWorldPos.z *
-                            3.0
-                        );
-
-                    transformed.x +=
-                        flutter *
-                        uWindStrength *
-                        0.12 *
-                        leafHeight;
-
-                    transformed.z +=
-                        flutter *
-                        uWindStrength *
-                        0.05 *
-                        leafHeight;
-
-                    `
-                );
-
-// ==================================================
-// FRAGMENT UNIFORMS
-// ==================================================
-
-shader.fragmentShader = `
-
-    uniform float uNoiseSeed;
-    uniform float uNoiseScale;
-    uniform float uNoiseContrast;
-    uniform float uNoiseBrightness;
-    uniform float uNoiseThreshold;
-    uniform float uNoiseSoftness;
-
-    uniform float uProjectionScale;
-    uniform float uProjectionRotation;
-    uniform vec2 uProjectionOffset;
-
-    uniform bool uNoiseInvert;
-
-    uniform vec3 uColor0;
-    uniform vec3 uColor1;
-    uniform vec3 uColor2;
-    uniform vec3 uColor3;
-
-    varying vec3 vLeafPosition;
-
-` + shader.fragmentShader;
-
-
-// ==================================================
-// PROCEDURAL SIMPLEX FUNCTIONS
-//
-// IMPORTANT:
-// These are inserted at GLOBAL fragment-shader scope,
-// NOT inside main().
-// ==================================================
-
-shader.fragmentShader = `
-
-    // ==================================================
-    // SEEDED HASH
-    // ==================================================
-
-    float leafHash21(
-        vec2 p,
-        float seed
-    )
-    {
-        vec3 p3 =
-            fract(
-                vec3(
-                    p.x,
-                    p.y,
-                    seed
-                ) *
-                0.1031
-            );
-
-        p3 +=
-            dot(
-                p3,
-                p3.yzx +
-                33.33
-            );
-
-        return fract(
-            (
-                p3.x +
-                p3.y
-            ) *
-            p3.z
-        );
-    }
-
-
-    // ==================================================
-    // GRADIENT
-    // ==================================================
-
-    vec2 leafGradient(
-        vec2 cell,
-        float seed
-    )
-    {
-        float angle =
-            leafHash21(
-                cell,
-                seed
-            ) *
-            6.28318530718;
-
-        return vec2(
-            cos(angle),
-            sin(angle)
-        );
-    }
-
-
-    // ==================================================
-    // SIMPLEX 2D
-    //
-    // ONE-OCTAVE VERSION
-    // ==================================================
-
-    float leafSimplex2D(
-        vec2 p,
-        float seed
-    )
-    {
-        const float F2 =
-            0.3660254037844386;
-
-        const float G2 =
-            0.2113248654051871;
-
-
-        // ==================================================
-        // SIMPLEX CELL
-        // ==================================================
-
-        float s =
-            (
-                p.x +
-                p.y
-            ) *
-            F2;
-
-        vec2 ij =
-            floor(
-                p +
-                s
-            );
-
-        float t =
-            (
-                ij.x +
-                ij.y
-            ) *
-            G2;
-
-        vec2 cellOrigin =
-            ij -
-            t;
-
-        vec2 x0 =
-            p -
-            cellOrigin;
-
-
-        // ==================================================
-        // CORNER ORDER
-        // ==================================================
-
-        vec2 i1;
-
-        if (
-            x0.x >
-            x0.y
-        )
-        {
-            i1 =
-                vec2(
-                    1.0,
-                    0.0
-                );
-        }
-        else
-        {
-            i1 =
-                vec2(
-                    0.0,
-                    1.0
-                );
-        }
-
-
-        // ==================================================
-        // CORNER POSITIONS
-        // ==================================================
-
-        vec2 x1 =
-            x0 -
-            i1 +
-            G2;
-
-        vec2 x2 =
-            x0 -
-            1.0 +
-            2.0 *
-            G2;
-
-
-        // ==================================================
-        // CONTRIBUTION WEIGHTS
-        // ==================================================
-
-        float q0 =
-            0.5 -
-            dot(
-                x0,
-                x0
-            );
-
-        float q1 =
-            0.5 -
-            dot(
-                x1,
-                x1
-            );
-
-        float q2 =
-            0.5 -
-            dot(
-                x2,
-                x2
-            );
-
-
-        float n0 =
-            0.0;
-
-        float n1 =
-            0.0;
-
-        float n2 =
-            0.0;
-
-
-        // ==================================================
-        // CORNER 0
-        // ==================================================
-
-        if (
-            q0 >
-            0.0
-        )
-        {
-            vec2 g0 =
-                leafGradient(
-                    ij,
-                    seed
-                );
-
-            n0 =
-                q0 *
-                q0 *
-                q0 *
-                q0 *
-                dot(
-                    g0,
-                    x0
-                );
-        }
-
-
-        // ==================================================
-        // CORNER 1
-        // ==================================================
-
-        if (
-            q1 >
-            0.0
-        )
-        {
-            vec2 g1 =
-                leafGradient(
-                    ij +
-                    i1,
-                    seed
-                );
-
-            n1 =
-                q1 *
-                q1 *
-                q1 *
-                q1 *
-                dot(
-                    g1,
-                    x1
-                );
-        }
-
-
-        // ==================================================
-        // CORNER 2
-        // ==================================================
-
-        if (
-            q2 >
-            0.0
-        )
-        {
-            vec2 g2 =
-                leafGradient(
-                    ij +
-                    vec2(
-                        1.0,
-                        1.0
-                    ),
-                    seed
-                );
-
-            n2 =
-                q2 *
-                q2 *
-                q2 *
-                q2 *
-                dot(
-                    g2,
-                    x2
-                );
-        }
-
-
-        // ==================================================
-        // NORMALIZATION
-        // ==================================================
-
-        float result =
-            0.5 +
-            (
-                70.0 *
-                (
-                    n0 +
-                    n1 +
-                    n2
-                )
-            ) /
-            1.5;
-
-        return clamp(
-            result,
-            0.0,
-            1.0
-        );
-    }
-
-
-` + shader.fragmentShader;
-
-
-// ==================================================
-// FOLIAGE COLOR
-// ==================================================
-
-shader.fragmentShader =
-    shader.fragmentShader.replace(
-
-        "#include <map_fragment>",
-
-        `
-
-        // ==================================================
-        // ORIGINAL GLB TEXTURE
-        //
-        // RGB is replaced by procedural color.
-        // Alpha is preserved.
-        // ==================================================
-
-        vec4 sampledDiffuseColor =
-            texture2D(
-                map,
-                vMapUv
-            );
-
-        diffuseColor.a *=
-            sampledDiffuseColor.a;
-
-
-        // ==================================================
-        // YZ PROJECTION
-        //
-        // Configuration:
-        //
-        // noiseScale       = 2.0
-        // projectionScale  = 0.25
-        // rotation         = 30 degrees
-        // offset           = (0.35, 0.455)
-        // mirror           = true
-        // invert           = true
-        // ==================================================
-
-        vec2 leafNoiseUV =
-            vLeafPosition.yz;
-
-
-        leafNoiseUV *=
-            uProjectionScale *
-            uNoiseScale;
-
-
-        // Center
-        leafNoiseUV -=
-            0.5;
-
-
-        // Rotation
-        float projectionCos =
-            cos(
-                uProjectionRotation
-            );
-
-        float projectionSin =
-            sin(
-                uProjectionRotation
-            );
-
-
-        leafNoiseUV =
-            mat2(
-                projectionCos,
-                -projectionSin,
-                projectionSin,
-                projectionCos
-            ) *
-            leafNoiseUV;
-
-
-        // Offset
-        leafNoiseUV +=
-            0.5 +
-            uProjectionOffset;
-
-
-        // ==================================================
-        // MIRROR
-        // ==================================================
-
-        leafNoiseUV =
-            abs(
-                leafNoiseUV
-            );
-
-
-        // ==================================================
-        // ONE-OCTAVE SIMPLEX
-        //
-        // EXACTLY ONE CALL.
-        //
-        // No:
-        // - FBM
-        // - domain warp
-        // - triplanar
-        // ==================================================
-
-        float noise =
-            leafSimplex2D(
-                leafNoiseUV,
-                uNoiseSeed
-            );
-
-
-        // ==================================================
-        // CONTRAST
-        // ==================================================
-
-        noise =
-            pow(
-                max(
-                    0.0,
-                    min(
-                        1.0,
-                        noise
-                    )
-                ),
-                1.0 /
-                max(
-                    0.001,
-                    uNoiseContrast
-                )
-            );
-
-
-        // ==================================================
-        // BRIGHTNESS
-        // ==================================================
-
-        noise =
-            min(
-                1.0,
-                max(
-                    0.0,
-                    noise +
-                    uNoiseBrightness
-                )
-            );
-
-
-        // ==================================================
-        // THRESHOLD
-        // ==================================================
-
-        float edge =
-            max(
-                0.0001,
-                uNoiseSoftness
-            );
-
-
-        noise =
-            smoothstep(
-                uNoiseThreshold -
-                edge,
-
-                uNoiseThreshold +
-                edge,
-
-                noise
-            );
-
-
-        // ==================================================
-        // INVERT
-        // ==================================================
-
-        if (
-            uNoiseInvert
-        )
-        {
-            noise =
-                1.0 -
-                noise;
-        }
-
-
-        // ==================================================
-        // FOUR-COLOR PALETTE
-        // ==================================================
-
-        vec3 proceduralColor;
-
-
-        if (
-            noise <
-            0.3333
-        )
-        {
-            proceduralColor =
-                mix(
-                    uColor0,
-                    uColor1,
-                    noise *
-                    3.0
-                );
-        }
-        else if (
-            noise <
-            0.6666
-        )
-        {
-            proceduralColor =
-                mix(
-                    uColor1,
-                    uColor2,
-                    (
-                        noise -
-                        0.3333
-                    ) *
-                    3.0
-                );
-        }
-        else
-        {
-            proceduralColor =
-                mix(
-                    uColor2,
-                    uColor3,
-                    (
-                        noise -
-                        0.6666
-                    ) *
-                    3.0
-                );
-        }
-
-
-        // ==================================================
-        // FINAL COLOR
-        // ==================================================
-
-        diffuseColor.rgb =
-            proceduralColor;
-
-        `
-    );
-
-
-        };
-
-    // ========================================================
-    // CUSTOM LEAF SHADOW MATERIAL
-    //
-    // SAME GLB TEXTURE
-    // SAME ALPHA
-    // SAME WIND
-    // ========================================================
-
-    const shadowMaterial =
-        new THREE.ShaderMaterial({
-
-            uniforms: {
-
-                map: {
-                    value:
-                        texture
-                },
-
-                uTime: {
-                    value:
-                        0
-                },
-
-                uWindStrength: {
-                    value:
-                        windStrength
-                },
-
-                uWindSpeed: {
-                    value:
-                        windSpeed
-                },
-
-                uWindScale: {
-                    value:
-                        windScale
-                }
-            },
-
-            // ==================================================
-            // SHADOW VERTEX SHADER
-            // ==================================================
-
-            vertexShader: /* glsl */`
-
-                uniform float uTime;
-                uniform float uWindStrength;
-                uniform float uWindSpeed;
-                uniform float uWindScale;
-
-                varying vec2 vUv;
-
-                void main() {
-
-                    // =========================================
-                    // UV
-                    // =========================================
-
-                    vUv =
-                        uv;
-
-                    vec3 p =
-                        position;
-
-                    // =========================================
-                    // WORLD POSITION
-                    // =========================================
-
-                    vec3 worldPos =
+                    vec3 shadowWindWorldPosition =
                         (
                             modelMatrix *
                             vec4(
@@ -1041,277 +949,116 @@ shader.fragmentShader =
                             )
                         ).xyz;
 
-                    // =========================================
-                    // WIND PHASE
-                    // =========================================
 
-                    float phase =
-                        worldPos.x *
-                        uWindScale *
-                        0.35
+                    float shadowWindPhase =
+                        shadowWindWorldPosition.x * 0.17 +
+                        shadowWindWorldPosition.z * 0.13;
 
-                        +
 
-                        worldPos.z *
-                        uWindScale *
-                        0.25
-
-                        +
-
-                        uTime *
-                        uWindSpeed;
-
-                    // =========================================
-                    // WIND WAVES
-                    // =========================================
-
-                    float wind1 =
+                    float shadowWave1 =
                         sin(
-                            phase
+                            shadowWindTime +
+                            shadowWindPhase
                         );
 
-                    float wind2 =
+
+                    float shadowWave2 =
                         sin(
-                            phase *
-                            1.73
-                            +
-                            2.4
+                            shadowWindTime * 1.73 +
+                            shadowWindPhase * 1.37
                         );
 
-                    float wind3 =
+
+                    float shadowWave3 =
                         sin(
-                            phase *
-                            3.91
-                            +
-                            1.2
+                            shadowWindTime * 3.91 +
+                            shadowWindPhase * 2.71
                         );
 
-                    float wind =
-                        wind1 *
-                        0.55
 
-                        +
+                    float shadowCombinedWind =
+                        shadowWave1 * 0.55 +
+                        shadowWave2 * 0.30 +
+                        shadowWave3 * 0.15;
 
-                        wind2 *
-                        0.30
 
-                        +
-
-                        wind3 *
-                        0.15;
-
-                    // =========================================
-                    // HEIGHT
-                    // =========================================
-
-                    float height =
-                        clamp(
+                    float shadowHeightMask =
+                        smoothstep(
+                            0.0,
+                            1.0,
                             position.y *
-                            0.5 +
-                            0.5,
-                            0.20,
-                            1.0
+                            uWindScale
                         );
 
-                    // =========================================
-                    // MAIN SWAY
-                    // =========================================
 
-                    p.x +=
-                        wind *
+                    float shadowSway =
+                        shadowCombinedWind *
                         uWindStrength *
-                        height;
+                        shadowHeightMask;
 
-                    p.z +=
-                        wind *
-                        uWindStrength *
-                        0.40 *
-                        height;
 
-                    // =========================================
-                    // FLUTTER
-                    // =========================================
+                    transformed.x +=
+                        shadowSway;
 
-                    float flutter =
+
+                    transformed.z +=
+                        shadowSway * 0.35;
+
+
+                    float shadowFlutter =
                         sin(
-                            uTime *
-                            uWindSpeed *
-                            2.5
+                            shadowWindTime * 3.7 +
+                            shadowWindPhase * 5.1
+                        ) *
+                        0.035 *
+                        shadowHeightMask;
 
-                            +
 
-                            worldPos.x *
-                            4.0
+                    transformed.x +=
+                        shadowFlutter;
 
-                            +
 
-                            worldPos.z *
-                            3.0
-                        );
+                    transformed.z +=
+                        shadowFlutter * 0.5;
+                    `
+                );
+        };
 
-                    p.x +=
-                        flutter *
-                        uWindStrength *
-                        0.12 *
-                        height;
 
-                    p.z +=
-                        flutter *
-                        uWindStrength *
-                        0.05 *
-                        height;
-
-                    // =========================================
-                    // FINAL POSITION
-                    // =========================================
-
-                    gl_Position =
-                        projectionMatrix *
-                        modelViewMatrix *
-                        vec4(
-                            p,
-                            1.0
-                        );
-                }
-
-            `,
-
-            // ==================================================
-            // SHADOW FRAGMENT SHADER
-            // ==================================================
-
-            fragmentShader: /* glsl */`
-
-                uniform sampler2D map;
-
-                varying vec2 vUv;
-
-                void main() {
-
-                    // =========================================
-                    // SAMPLE SAME GLB TEXTURE
-                    // =========================================
-
-                    vec4 diffuse =
-                        texture2D(
-                            map,
-                            vUv
-                        );
-
-                    // =========================================
-                    // ALPHA CUTOUT
-                    //
-                    // KEEP EXACTLY AS BEFORE
-                    // =========================================
-
-                    if (
-                        diffuse.a <
-                        0.5
-                    )
-                    {
-                        discard;
-                    }
-
-                    // =========================================
-                    // SHADOW OUTPUT
-                    // =========================================
-
-                    gl_FragColor =
-                        vec4(
-                            0.0,
-                            0.0,
-                            0.0,
-                            1.0
-                        );
-                }
-
-            `,
-
-            side:
-                THREE.DoubleSide,
-
-            transparent:
-                false,
-
-            depthWrite:
-                true,
-
-            depthTest:
-                true
-        });
-
-    // ========================================================
+    // ============================================================
     // TIME UPDATE
-    // ========================================================
+    // ============================================================
 
-    function updateTime() {
-
-        const time =
-            performance.now() /
-            1000.0;
-
-        // ================================================
-        // VISIBLE LEAF SHADER
-        // ================================================
+material.onBeforeRender =
+    (
+        renderer,
+        scene,
+        camera,
+        geometry,
+        object
+    ) => {
 
         const shader =
-            leafMaterial
-                .userData
-                .leafShader;
+            material.userData.shader;
 
-        if (
-            shader &&
-            shader.uniforms.uLeafTime
-        ) {
-
-            shader
-                .uniforms
-                .uLeafTime
-                .value =
-                    time;
+        if (!shader) {
+            return;
         }
 
-        // ================================================
-        // SHADOW
-        // ================================================
+        shader.uniforms.uLeafTime.value =
+            performance.now() * 0.001;
+    };
 
-        shadowMaterial
-            .uniforms
-            .uTime
-            .value =
-                time;
-    }
-
-    // ========================================================
-    // RENDER CALLBACKS
-    // ========================================================
-
-    leafMaterial.onBeforeRender =
-        updateTime;
-
-    shadowMaterial.onBeforeRender =
-        updateTime;
-
-    // ========================================================
-    // STORE SHADOW MATERIAL
-    // ========================================================
-
-    leafMaterial.userData =
-        leafMaterial.userData ||
-        {};
-
-    leafMaterial.userData.leafShadowMaterial =
+    material.userData.leafShadowMaterial =
         shadowMaterial;
 
-    // ========================================================
-    // UPDATE
-    // ========================================================
 
-    leafMaterial.needsUpdate =
-        true;
+    // ------------------------------------------------------------
+    // STORE COMPILED SHADER
+    // ------------------------------------------------------------
 
-    shadowMaterial.needsUpdate =
-        true;
+    
 
-    return leafMaterial;
+
+    return material;
 }

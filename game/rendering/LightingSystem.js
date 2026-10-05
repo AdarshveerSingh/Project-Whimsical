@@ -159,7 +159,7 @@ sun.shadow.radius =
 
             0x8fcbea, // sky
             0x6f8290, // ground
-            1.35
+            0.25
 
         );
 

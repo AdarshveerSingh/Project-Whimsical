@@ -132,9 +132,7 @@ export function applyLeafShader(
             shader.uniforms.uDarkGreen = {
                 value:
                     new THREE.Color(
-                        0.015, 
-                        0.16,
-                        0.21
+                    "#213a35"
                         // R,G,B
                     )
             };
@@ -142,19 +140,14 @@ export function applyLeafShader(
             shader.uniforms.uTealGreen = {
                 value:
                     new THREE.Color(
-                        0.015,
-                        0.48,
-                        0.39
-                        // R,G,B
+                      "#57b6a3"
                     )
             };
 
             shader.uniforms.uBrightGreen = {
                 value:
                     new THREE.Color(
-                        0.03,
-                        0.95,
-                        0.34
+                       "#56f6ab"
                         // R,G,B
                     )
             };

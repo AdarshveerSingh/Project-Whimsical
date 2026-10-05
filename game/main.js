@@ -48,186 +48,10 @@ import {
 import {
     PlacementRegistry
 } from "./world/PlacementRegistry.js";
-// ==================================================
-// OPEN MAP IN NEW TAB
-// ==================================================
 
-function openMapInNewTab(canvas, title) {
-
-    const imageURL =
-        canvas.toDataURL("image/png");
-
-    const newTab =
-        window.open("", "_blank");
-
-    if (!newTab) {
-        console.warn(
-            "Browser blocked the map tab."
-        );
-        return;
-    }
-
-    newTab.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>${title}</title>
-
-            <style>
-                html,
-                body {
-                    margin: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: #111;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    overflow: auto;
-                }
-
-                img {
-                    max-width: 100%;
-                    max-height: 100%;
-                    object-fit: contain;
-                    image-rendering: pixelated;
-                }
-            </style>
-        </head>
-
-        <body>
-            <img
-                src="${imageURL}"
-                alt="${title}"
-            >
-        </body>
-        </html>
-    `);
-
-    newTab.document.close();
-}
-
-// ==================================================
-// OPEN DISPLACEMENT MAP
-// ==================================================
-
-function openDisplacementMap() {
-
-    const canvas =
-        chunkManager.generateDisplacementMap(
-            0,
-            0,
-            1024
-        );
-
-
-    if (!canvas) {
-
-        console.warn(
-            "Cannot generate displacement map."
-        );
-
-        return;
-
-    }
-
-
-    openMapInNewTab(
-        canvas,
-        "Terrain Displacement Map"
-    );
-
-}
-
-
-// ==================================================
-// OPEN SURFACE MAP
-// ==================================================
-
-function openSurfaceMap() {
-
-    const canvas =
-        chunkManager.generateSurfaceMap(
-            0,
-            0,
-            1024
-        );
-
-
-    if (!canvas) {
-
-        console.warn(
-            "Cannot generate surface map."
-        );
-
-        return;
-
-    }
-
-
-    openMapInNewTab(
-        canvas,
-        "Terrain Surface Map"
-    );
-
-}
-window.openDisplacementMap =
-    openDisplacementMap;
-
-window.openSurfaceMap =
-    openSurfaceMap;
-
-// ==================================================
-// OPEN PROP DISTRIBUTION MAP
-// ==================================================
-
-function openPropDistributionMap(
-    type = "grass"
-) {
-
-    const debugTerrain =
-        chunkManager.getChunk(
-            0,
-            0
-        );
-
-
-    if (!debugTerrain) {
-
-        console.warn(
-            "Debug terrain chunk (0,0) is not loaded."
-        );
-
-        return;
-    }
-
-
-    const canvas =
-        debugTerrain.terrain
-            .generatePropDistributionMap(
-                type,
-                512
-            );
-
-
-    if (!canvas) {
-
-        console.warn(
-            `Cannot generate ${type} distribution map.`
-        );
-
-        return;
-    }
-
-
-    openMapInNewTab(
-        canvas,
-        `${type} Distribution Map`
-    );
-}
-
-window.openPropDistributionMap =
-    openPropDistributionMap;
+import {
+    PerformanceDebug
+} from "./debug/PerformanceDebug.js";
 // ==================================================
 // SCENE
 // ==================================================
@@ -318,7 +142,15 @@ camera.lookAt(
     0
 );
 
-
+const stats = new Stats();
+        stats.showPanel(0);
+        Object.assign(stats.dom.style, {
+            position: "fixed",
+            left: "0px",
+            top: "0px",
+            zIndex: "9999"
+        });
+        document.body.appendChild(stats.dom);
 // ==================================================
 // RENDERER
 // ==================================================
@@ -330,7 +162,6 @@ const renderer =
             true
 
     });
-
 
 renderer.setSize(
     window.innerWidth,
@@ -364,17 +195,6 @@ renderer.shadowMap.type =
 document.body.appendChild(
     renderer.domElement
 );
-
-const stats = new Stats();
-
-stats.showPanel(0); // 0 = FPS, 1 = MS, 2 = memory
-
-stats.dom.style.position = "fixed";
-stats.dom.style.left = "0px";
-stats.dom.style.top = "0px";
-stats.dom.style.zIndex = "9999";
-
-document.body.appendChild(stats.dom);
 
 // ==================================================
 // LIGHTING
@@ -685,7 +505,7 @@ const bushSystem =
         chunkSize: 64,
 
         modelPath:
-            "./models/bushes.glb"
+            "./models/bushes_gn_shader.glb"
 
     });
 const chunkManager =
@@ -744,44 +564,36 @@ fpsController.terrainHeightFunction =
         chunkManager
     );
 
-    const displacementCanvas =
-    chunkManager.generateDisplacementMap(
-        0,
-        0,
-        512
-    );
-
-const surfaceCanvas =
-    chunkManager.generateSurfaceMap(
-        0,
-        0,
-        512
-    );
-// ==================================================
-// DEBUG MAP VIEWERS
+    // ==================================================
+// PERFORMANCE DEBUG
 // ==================================================
 
-const debugTerrain =
-    chunkManager.getChunk(
-        0,
-        0
-    );
+const performanceDebug =
+    new PerformanceDebug({
+        renderer,
+        scene,
+        player: fpsController,
+        chunkManager
+    });
 
-if (debugTerrain) {
+// F3 = toggle performance debugging
+window.addEventListener(
+    "keydown",
+    (event) => {
 
-    const displacementCanvas =
-        debugTerrain.terrain
-            .generateDisplacementMap(
-                512
-            );
+        if (event.code !== "F3") {
+            return;
+        }
 
-    const surfaceCanvas =
-        debugTerrain.terrain
-            .generateSurfaceMap(
-                512
-            );
+        event.preventDefault();
 
-}
+        performanceDebug.toggle();
+
+    }
+);
+
+
+
 // ==================================================
 // CAMERA MODE
 // ==================================================
@@ -893,108 +705,11 @@ window.addEventListener(
 );
 
 // ==================================================
-// PROP DISTRIBUTION DEBUG
-// ==================================================
-
-window.addEventListener(
-    "keydown",
-    (event) => {
-
-        const key =
-            event.key.toLowerCase();
-
-
-        switch (key) {
-
-            case "g":
-                openPropDistributionMap(
-                    "grass"
-                );
-                break;
-
-
-            case "t":
-                openPropDistributionMap(
-                    "tree"
-                );
-                break;
-
-
-            case "r":
-                openPropDistributionMap(
-                    "rock"
-                );
-                break;
-
-
-            case "f":
-                openPropDistributionMap(
-                    "flower"
-                );
-                break;
-
-
-            case "b":
-                openPropDistributionMap(
-                    "bush"
-                );
-                break;
-        }
-    }
-);
-// ==================================================
 // CLOCK
 // ==================================================
 
 const clock =
     new THREE.Clock();
-
-
-// ==================================================
-// CHUNK DEBUG
-// ==================================================
-
-let lastChunkX = null;
-let lastChunkZ = null;
-
-
-function updateChunkDebug() {
-
-    const position =
-        fpsController.getPosition();
-
-
-    const chunkX =
-        Math.floor(
-            position.x / 64
-        );
-
-
-    const chunkZ =
-        Math.floor(
-            position.z / 64
-        );
-
-
-    if (
-        chunkX !== lastChunkX ||
-        chunkZ !== lastChunkZ
-    ) {
-
-        lastChunkX =
-            chunkX;
-
-        lastChunkZ =
-            chunkZ;
-
-
-        console.log(
-            `Player Chunk: ${chunkX}, ${chunkZ}`
-        );
-
-    }
-
-}
 
 
 // ==================================================
@@ -1149,7 +864,7 @@ function animate() {
 bushSystem.update(
     delta
 );
-    updateChunkDebug();
+
 
 
     // ==============================================
@@ -1199,8 +914,11 @@ bushSystem.update(
     // ==============================================
     // RENDER
     // ==============================================
-
     composer.render();
+
+    if (performanceDebug.enabled) {
+    performanceDebug.update(delta);
+}
 
     stats.end();
 

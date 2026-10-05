@@ -16,7 +16,7 @@ export class BushSystem {
         placementRegistry = null,
         seed = 482917,
         chunkSize = 64,
-        modelPath = "./models/bushes.glb"
+        modelPath = "./models/bushes_LOD.glb"
     }) {
 
         this.scene =
@@ -307,6 +307,8 @@ this.fogFar =
             });
 
 
+
+
         // ==================================================
         // ORIGINAL GLB TEXTURE
         // ==================================================
@@ -457,6 +459,23 @@ this.fogFar =
 
         return material;
 
+    //         const material = sourceMaterial.clone();
+
+    //         material.side =
+    //     THREE.DoubleSide;
+
+    // material.needsUpdate =
+    //     true;
+
+    //     material.transparent = false;
+
+    //     material.depthWrite = true;
+
+    //     material.depthTest = true;
+
+    //     material.alphaTest = 0.5;
+    // return material;
+
     }
 
 
@@ -492,7 +511,7 @@ this.fogFar =
                 ) {
 
                     const name =
-                        `Bush_${String(i).padStart(2, "0")}`;
+                        `Bush_${String(i).padStart(2, "0")}_LOD1`;
 
 
                     const variation =
