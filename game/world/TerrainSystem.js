@@ -655,437 +655,428 @@ const slopeDegrees =
     // local coordinates as the terrain mesh.
     //
 
-    getHeightGrid() {
+getHeightGrid() {
 
-        const gridResolution =
-            this.resolution + 1;
+    return this.terrainGrid;
 
-        const total =
-            gridResolution *
-            gridResolution;
-
-        const grid =
-            new Float32Array(total);
-
-        const grassWeightData =
-            new Float32Array(total);
-
-        const dirtWeightData =
-            new Float32Array(total);
-
-        const gravelWeightData =
-            new Float32Array(total);
-
-        const rockWeightData =
-            new Float32Array(total);
-
-        const halfSize =
-            this.size * 0.5;
-
-        const step =
-            this.size /
-            this.resolution;
-
-
-        for (
-            let z = 0;
-            z < gridResolution;
-            z++
-        ) {
-
-            const localZ =
-                -halfSize +
-                z * step;
-
-
-            for (
-                let x = 0;
-                x < gridResolution;
-                x++
-            ) {
-
-                const localX =
-                    -halfSize +
-                    x * step;
-
-                const worldX =
-                    localX +
-                    this.worldOffsetX;
-
-                const worldZ =
-                    localZ +
-                    this.worldOffsetZ;
-
-                const index =
-                    z * gridResolution + x;
-
-
-              // =========================================
-// TERRAIN SAMPLE
-// =========================================
-
-const terrainSample =
-    this.worldGenerator.getTerrainSample(
-        worldX,
-        worldZ
-    );
-
-grid[index] =
-    terrainSample.height;
-
-
-// =========================================
-// SURFACE NOISE
-// =========================================
-
-const surfaceNoise =
-    this.surfaceSystem.getSurfaceNoise(
-        worldX,
-        worldZ
-    );
-
-
-// =========================================
-// SURFACE
-// =========================================
-
-const weights =
-    this.surfaceSystem.getSurfaceWeights(
-        worldX,
-        worldZ,
-        this,
-        terrainSample,
-        surfaceNoise
-    );
-
-
-                grassWeightData[index] =
-                    weights.grass;
-
-                dirtWeightData[index] =
-                    weights.dirt;
-
-                gravelWeightData[index] =
-                    weights.gravel;
-
-                rockWeightData[index] =
-                    weights.rock;
-            }
-        }
-
-
-        return {
-
-            data:
-                grid,
-
-            grassWeightData:
-                grassWeightData,
-
-            dirtWeightData:
-                dirtWeightData,
-
-            gravelWeightData:
-                gravelWeightData,
-
-            rockWeightData:
-                rockWeightData,
-
-            resolution:
-                gridResolution,
-
-            size:
-                this.size
-        };
-    }
-
+}
     // ==================================================
     // GENERATE
     // ==================================================
 
-    generate() {
+generate() {
 
-        // --------------------------------------------------
-        // MAIN TERRAIN GEOMETRY
-        // --------------------------------------------------
+    // --------------------------------------------------
+    // MAIN TERRAIN GEOMETRY
+    // --------------------------------------------------
 
-        this.geometry =
-            new THREE.PlaneGeometry(
+    this.geometry =
+        new THREE.PlaneGeometry(
 
-                this.size,
+            this.size,
 
-                this.size,
+            this.size,
 
-                this.resolution,
+            this.resolution,
 
-                this.resolution
+            this.resolution
 
-            );
-
-
-        this.geometry.rotateX(
-            -Math.PI / 2
         );
 
 
-        // --------------------------------------------------
-        // HEIGHT + SURFACE
-        // --------------------------------------------------
-
-        const position =
-            this.geometry.attributes.position;
-
-        const colors = [];
-
-        const surfaceWeights = [];
-
-// --------------------------------------------------
-// HEIGHT + SURFACE WEIGHTS
-// --------------------------------------------------
-
-for (
-    let i = 0;
-    i < position.count;
-    i++
-) {
-
-    const localX =
-        position.getX(i);
-
-    const localZ =
-        position.getZ(i);
-
-
-    const worldX =
-        localX +
-        this.worldOffsetX;
-
-    const worldZ =
-        localZ +
-        this.worldOffsetZ;
-
-
-    // --------------------------------------------------
-    // SHARED TERRAIN SAMPLE
-    // --------------------------------------------------
-
-    const terrainSample =
-        this.worldGenerator.getTerrainSample(
-            worldX,
-            worldZ
-        );
-
-
-    // --------------------------------------------------
-    // HEIGHT
-    // --------------------------------------------------
-
-    position.setY(
-        i,
-        terrainSample.height
+    this.geometry.rotateX(
+        -Math.PI / 2
     );
 
 
     // --------------------------------------------------
-    // SURFACE WEIGHTS
+    // TERRAIN DATA
     // --------------------------------------------------
 
-    const surfaceNoise =
-        this.surfaceSystem.getSurfaceNoise(
-            worldX,
-            worldZ
-        );
-
-    const weights =
-        this.surfaceSystem.getSurfaceWeights(
-            worldX,
-            worldZ,
-            this,
-            terrainSample,
-            surfaceNoise
-        );
+    const position =
+        this.geometry.attributes.position;
 
 
-    // --------------------------------------------------
-    // SURFACE DEBUG COLOR
-    // --------------------------------------------------
-
-const surfaceColor =
-    this.surfaceSystem.getSurfaceColor(
-        worldX,
-        worldZ,
-        this,
-        terrainSample,
-        weights,
-        surfaceNoise
-    );
+    const gridResolution =
+        this.resolution + 1;
 
 
-    colors.push(
-        surfaceColor.r,
-        surfaceColor.g,
-        surfaceColor.b
-    );
+    const total =
+        gridResolution *
+        gridResolution;
 
 
-    // --------------------------------------------------
-    // DIRECT SURFACE WEIGHTS
-    //
-    // R = grass
-    // G = dirt
-    // B = gravel
-    // A = rock
-    // --------------------------------------------------
-
-    surfaceWeights.push(
-        weights.grass,
-        weights.dirt,
-        weights.gravel,
-        weights.rock
-    );
-}
-
-
-        position.needsUpdate =
-            true;
-
-
-        // --------------------------------------------------
-        // DEBUG COLOR ATTRIBUTE
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-            "color",
-            new THREE.Float32BufferAttribute(
-                colors,
-                3
-            )
+    const heightData =
+        new Float32Array(
+            total
         );
 
 
-        // --------------------------------------------------
-        // SURFACE WEIGHTS ATTRIBUTE
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-            "surfaceWeights",
-            new THREE.Float32BufferAttribute(
-                surfaceWeights,
-                4
-            )
+    const grassWeightData =
+        new Float32Array(
+            total
         );
 
 
+    const dirtWeightData =
+        new Float32Array(
+            total
+        );
+
+
+    const gravelWeightData =
+        new Float32Array(
+            total
+        );
+
+
+    const rockWeightData =
+        new Float32Array(
+            total
+        );
+
+
+    const normalData =
+        new Float32Array(
+            total * 3
+        );
+
+
+    const colors =
+        new Float32Array(
+            total * 3
+        );
+
+
+    const surfaceWeights =
+        new Float32Array(
+            total * 4
+        );
+
+
+    // --------------------------------------------------
+    // HEIGHT + SURFACE + NORMAL
+    // --------------------------------------------------
+
+    for (
+        let i = 0;
+        i < position.count;
+        i++
+    ) {
+
+        const localX =
+            position.getX(i);
+
+
+        const localZ =
+            position.getZ(i);
+
+
+        const worldX =
+            localX +
+            this.worldOffsetX;
+
+
+        const worldZ =
+            localZ +
+            this.worldOffsetZ;
+
+
         // --------------------------------------------------
-        // WORLD-SPACE NORMALS
+        // TERRAIN SAMPLE
         // --------------------------------------------------
 
-        const normalAttribute =
-            new THREE.BufferAttribute(
-
-                new Float32Array(
-                    position.count * 3
-                ),
-
-                3
+        const terrainSample =
+            this.worldGenerator.getTerrainSample(
+                worldX,
+                worldZ
             );
 
 
-        for (
-            let i = 0;
-            i < position.count;
-            i++
-        ) {
+        // --------------------------------------------------
+        // HEIGHT
+        // --------------------------------------------------
 
-            const localX =
-                position.getX(i);
-
-            const localZ =
-                position.getZ(i);
-
-
-            const worldX =
-                localX +
-                this.worldOffsetX;
-
-
-            const worldZ =
-                localZ +
-                this.worldOffsetZ;
-
-
-            const normal =
-                this.getNormal(
-                    worldX,
-                    worldZ
-                );
-
-
-            normalAttribute.setXYZ(
-
-                i,
-
-                normal.x,
-
-                normal.y,
-
-                normal.z
-
-            );
-        }
-
-
-        this.geometry.setAttribute(
-            "normal",
-            normalAttribute
+        position.setY(
+            i,
+            terrainSample.height
         );
 
 
+        heightData[i] =
+            terrainSample.height;
+
+
         // --------------------------------------------------
-        // MAIN MESH
+        // NORMAL
         // --------------------------------------------------
 
-        this.mesh =
-            new THREE.Mesh(
-                this.geometry,
-                this.material
+        normalData[
+            i * 3
+        ] =
+            terrainSample.normal.x;
+
+
+        normalData[
+            i * 3 + 1
+        ] =
+            terrainSample.normal.y;
+
+
+        normalData[
+            i * 3 + 2
+        ] =
+            terrainSample.normal.z;
+
+
+        // --------------------------------------------------
+        // SURFACE NOISE
+        // --------------------------------------------------
+
+        const surfaceNoise =
+            this.surfaceSystem.getSurfaceNoise(
+                worldX,
+                worldZ
             );
 
 
-        this.mesh.position.set(
+        // --------------------------------------------------
+        // SURFACE WEIGHTS
+        // --------------------------------------------------
 
-            this.worldOffsetX,
-
-            0,
-
-            this.worldOffsetZ
-
-        );
-
-
-        this.mesh.name =
-            `TerrainChunk_${this.worldOffsetX}_${this.worldOffsetZ}`;
-
-
-        this.mesh.receiveShadow =
-            true;
-
-
-        this.mesh.castShadow =
-            false;
-
-
-        this.scene.add(
-            this.mesh
-        );
+        const weights =
+            this.surfaceSystem.getSurfaceWeights(
+                worldX,
+                worldZ,
+                this,
+                terrainSample,
+                surfaceNoise
+            );
 
 
         // --------------------------------------------------
-        // LOD SKIRT
+        // SURFACE COLOR
         // --------------------------------------------------
 
-        this.generateSkirt();
+        const surfaceColor =
+            this.surfaceSystem.getSurfaceColor(
+                worldX,
+                worldZ,
+                this,
+                terrainSample,
+                weights,
+                surfaceNoise
+            );
+
+
+        colors[
+            i * 3
+        ] =
+            surfaceColor.r;
+
+
+        colors[
+            i * 3 + 1
+        ] =
+            surfaceColor.g;
+
+
+        colors[
+            i * 3 + 2
+        ] =
+            surfaceColor.b;
+
+
+        // --------------------------------------------------
+        // SURFACE WEIGHT DATA
+        // --------------------------------------------------
+
+        grassWeightData[i] =
+            weights.grass;
+
+
+        dirtWeightData[i] =
+            weights.dirt;
+
+
+        gravelWeightData[i] =
+            weights.gravel;
+
+
+        rockWeightData[i] =
+            weights.rock;
+
+
+        // --------------------------------------------------
+        // MESH SURFACE WEIGHTS
+        // --------------------------------------------------
+
+        surfaceWeights[
+            i * 4
+        ] =
+            weights.grass;
+
+
+        surfaceWeights[
+            i * 4 + 1
+        ] =
+            weights.dirt;
+
+
+        surfaceWeights[
+            i * 4 + 2
+        ] =
+            weights.gravel;
+
+
+        surfaceWeights[
+            i * 4 + 3
+        ] =
+            weights.rock;
+
     }
+
+
+    position.needsUpdate =
+        true;
+
+
+    // --------------------------------------------------
+    // CACHE TERRAIN DATA
+    // --------------------------------------------------
+
+    this.terrainGrid = {
+
+        data:
+            heightData,
+
+        grassWeightData:
+            grassWeightData,
+
+        dirtWeightData:
+            dirtWeightData,
+
+        gravelWeightData:
+            gravelWeightData,
+
+        rockWeightData:
+            rockWeightData,
+
+        resolution:
+            gridResolution,
+
+        size:
+            this.size
+
+    };
+
+
+    // --------------------------------------------------
+    // DEBUG COLOR ATTRIBUTE
+    // --------------------------------------------------
+
+    this.geometry.setAttribute(
+
+        "color",
+
+        new THREE.Float32BufferAttribute(
+
+            colors,
+
+            3
+
+        )
+
+    );
+
+
+    // --------------------------------------------------
+    // SURFACE WEIGHTS ATTRIBUTE
+    // --------------------------------------------------
+
+    this.geometry.setAttribute(
+
+        "surfaceWeights",
+
+        new THREE.Float32BufferAttribute(
+
+            surfaceWeights,
+
+            4
+
+        )
+
+    );
+
+
+    // --------------------------------------------------
+    // WORLD-SPACE NORMALS
+    // --------------------------------------------------
+
+    this.geometry.setAttribute(
+
+        "normal",
+
+        new THREE.BufferAttribute(
+
+            normalData,
+
+            3
+
+        )
+
+    );
+
+
+    // --------------------------------------------------
+    // MAIN MESH
+    // --------------------------------------------------
+
+    this.mesh =
+        new THREE.Mesh(
+
+            this.geometry,
+
+            this.material
+
+        );
+
+
+    this.mesh.position.set(
+
+        this.worldOffsetX,
+
+        0,
+
+        this.worldOffsetZ
+
+    );
+
+
+    this.mesh.name =
+        `TerrainChunk_${this.worldOffsetX}_${this.worldOffsetZ}`;
+
+
+    this.mesh.receiveShadow =
+        true;
+
+
+    this.mesh.castShadow =
+        false;
+
+
+    this.scene.add(
+        this.mesh
+    );
+
+
+    // --------------------------------------------------
+    // LOD SKIRT
+    // --------------------------------------------------
+
+    this.generateSkirt();
+
+}
     // ==================================================
     // GENERATE LOD SKIRT
     // ==================================================
@@ -1458,7 +1449,8 @@ const surfaceColor =
             this.skirtGeometry =
                 null;
         }
-
+        this.terrainGrid =
+    null;
 
         if (
             this.skirtMesh

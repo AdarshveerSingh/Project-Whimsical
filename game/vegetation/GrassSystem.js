@@ -334,6 +334,34 @@ registerTerrainChunk(
     const grid =
         terrain.getHeightGrid();
 
+    const terrainGridCopy =
+    new Float32Array(
+        grid.data
+    );
+
+
+const grassWeightGridCopy =
+    new Float32Array(
+        grid.grassWeightData
+    );
+
+
+const dirtWeightGridCopy =
+    new Float32Array(
+        grid.dirtWeightData
+    );
+
+
+const gravelWeightGridCopy =
+    new Float32Array(
+        grid.gravelWeightData
+    );
+
+
+const rockWeightGridCopy =
+    new Float32Array(
+        grid.rockWeightData
+    );
 
     this.terrainChunks.set(
 
@@ -370,57 +398,54 @@ registerTerrainChunk(
     // ==================================================
     // SEND TERRAIN GRID TO WORKER
     // ==================================================
+this.worker.postMessage(
 
-    this.worker.postMessage(
+    {
 
-        {
+        type:
+            "setTerrainGrid",
 
-            type:
-                "setTerrainGrid",
+        key:
+            key,
 
-            key:
-                key,
+        terrainGrid:
+            terrainGridCopy,
 
-            terrainGrid:
-                grid.data,
+        grassWeightGrid:
+            grassWeightGridCopy,
 
-            grassWeightGrid:
-                grid.grassWeightData,
+        dirtWeightGrid:
+            dirtWeightGridCopy,
 
-            dirtWeightGrid:
-                grid.dirtWeightData,
+        gravelWeightGrid:
+            gravelWeightGridCopy,
 
-            gravelWeightGrid:
-                grid.gravelWeightData,
+        rockWeightGrid:
+            rockWeightGridCopy,
 
-            rockWeightGrid:
-                grid.rockWeightData,
+        gridResolution:
+            grid.resolution,
 
-            gridResolution:
-                grid.resolution,
+        terrainSize:
+            grid.size
 
-            terrainSize:
-                grid.size
+    },
 
-        },
+    [
 
-        [
+        terrainGridCopy.buffer,
 
-            grid.data.buffer,
+        grassWeightGridCopy.buffer,
 
-            grid.grassWeightData.buffer,
+        dirtWeightGridCopy.buffer,
 
-            grid.dirtWeightData.buffer,
+        gravelWeightGridCopy.buffer,
 
-            grid.gravelWeightData.buffer,
+        rockWeightGridCopy.buffer
 
-            grid.rockWeightData.buffer
+    ]
 
-        ]
-
-    );
-
-
+);
     // ==================================================
     // QUEUE GRASS GENERATION
     // ==================================================

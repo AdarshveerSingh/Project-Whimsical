@@ -822,7 +822,46 @@ function updateGodRaySunPosition() {
     }
 
 }
+const terrainTestWorker =
+    new Worker(
+        "./world/TerrainWorker.js",
+        { type: "module" }
+    );
 
+terrainTestWorker.onmessage = (event) => {
+    console.log("Terrain worker result:", event.data);
+
+    terrainTestWorker.terminate();
+};
+
+terrainTestWorker.onerror = (error) => {
+    console.error("Terrain worker error:");
+    console.error("message:", error.message);
+    console.error("filename:", error.filename);
+    console.error("lineno:", error.lineno);
+    console.error("colno:", error.colno);
+
+    terrainTestWorker.terminate();
+};
+
+terrainTestWorker.postMessage({
+    type: "generate",
+
+    jobId: "test",
+    key: "test",
+
+    size: 64,
+    resolution: 32,
+
+    worldOffsetX: 0,
+    worldOffsetZ: 0,
+
+    seed: 482917,
+
+    baseHeight: 0,
+    maxHeight: 14.2,
+    heightScale: 6
+});
 // ==================================================
 // ANIMATION
 // ==================================================
