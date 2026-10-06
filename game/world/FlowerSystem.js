@@ -559,11 +559,12 @@ this.flowerModels.set(
     // SURFACE SUITABILITY
     // ==================================================
 
-    getSurfaceSuitability(
-        x,
-        z,
-        terrain
-    ) {
+getSurfaceSuitability(
+    x,
+    z,
+    terrain,
+    surfaceData = null
+) {
 
         if (
             !this.surfaceSystem
@@ -583,7 +584,9 @@ this.flowerModels.set(
                 terrain.terrain.worldGenerator
 
             );
-
+        if (surfaceData) {
+    surfaceData.surface = surface;
+}
 
         // Flowers prefer relatively flat ground.
 
@@ -839,15 +842,15 @@ this.flowerModels.set(
                 // SURFACE
                 // ==================================================
 
-                const suitability =
-                    this.getSurfaceSuitability(
+const surfaceData = {};
 
-                        worldX,
-                        worldZ,
-
-                        chunk.terrain
-
-                    );
+const suitability =
+    this.getSurfaceSuitability(
+        worldX,
+        worldZ,
+        chunk.terrain,
+        surfaceData
+    );
 
 
                 if (
@@ -1216,15 +1219,8 @@ for (
                 // TERRAIN HEIGHT
                 // ==================================================
 
-                const y =
-                    chunk.terrainSystem
-                        .worldGenerator
-                        .getHeight(
-
-                            worldX,
-                            worldZ
-
-                        );
+const y =
+    surfaceData.surface.height;
 
 
                 // ==================================================

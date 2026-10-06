@@ -78,7 +78,7 @@ export const BushShader = {
         },
 
         noiseOctaves: {
-            value: 7.0
+            value: 1.0
         },
 
         noiseLacunarity: {
@@ -90,7 +90,7 @@ export const BushShader = {
         },
 
         noiseContrast: {
-            value: 2.03
+            value: 1.03
         },
 
         noiseBrightness: {

@@ -401,11 +401,12 @@ createLeafMaterial(originalMaterial, leafBounds) {
     // TREE SURFACE SUITABILITY
     // ============================================================
 
-    getSurfaceSuitability(
-        x,
-        z,
-        terrain
-    ) {
+getSurfaceSuitability(
+    x,
+    z,
+    terrain,
+    surfaceData = null
+) {
 
         const surface =
             this.surfaceSystem.getSurface(
@@ -413,7 +414,9 @@ createLeafMaterial(originalMaterial, leafBounds) {
                 z,
                 terrain.worldGenerator
             );
-
+            if (surfaceData) {
+    surfaceData.surface = surface;
+}
 
         const weights =
             surface.weights;
@@ -639,13 +642,15 @@ createLeafMaterial(originalMaterial, leafBounds) {
                 // SURFACE
                 // ------------------------------------------------
 
-                const suitability =
-                    this.getSurfaceSuitability(
-                        worldX,
-                        worldZ,
-                        chunk.terrain
-                    );
+const surfaceData = {};
 
+const suitability =
+    this.getSurfaceSuitability(
+        worldX,
+        worldZ,
+        chunk.terrain,
+        surfaceData
+    );
 
                 // ------------------------------------------------
                 // TREE DENSITY
@@ -700,12 +705,8 @@ createLeafMaterial(originalMaterial, leafBounds) {
                 // HEIGHT
                 // ------------------------------------------------
 
-                const y =
-                    chunk.terrain.worldGenerator.getHeight(
-                        worldX,
-                        worldZ
-                    );
-
+const y =
+    surfaceData.surface.height;
 
                 // ------------------------------------------------
                 // ROTATION

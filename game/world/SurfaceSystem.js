@@ -379,34 +379,42 @@ export class SurfaceSystem {
     // SURFACE WEIGHTS
     // ==================================================
 
-    getSurfaceWeights(
-        x,
-        z,
-        terrain
-    ) {
+getSurfaceWeights(
+    x,
+    z,
+    terrain,
+    terrainSample = null,
+    noise = null
+) {
 
-        const height =
-            terrain.getHeight(
-                x,
-                z
-            );
+  const height =
+    terrainSample !== null
+        ? terrainSample.height
+        : terrain.getHeight(
+            x,
+            z
+        );
 
-        const slope =
-            terrain.getSlope(
-                x,
-                z
-            );
+const slope =
+    terrainSample !== null
+        ? terrainSample.slope
+        : terrain.getSlope(
+            x,
+            z
+        );
 
-        const slopeDegrees =
-            THREE.MathUtils.radToDeg(
-                slope
-            );
+const slopeDegrees =
+    THREE.MathUtils.radToDeg(
+        slope
+    );
 
-        const noise =
-            this.getSurfaceNoise(
-                x,
-                z
-            );
+const surfaceNoise =
+    noise !== null
+        ? noise
+        : this.getSurfaceNoise(
+            x,
+            z
+        );
 
 
         // ==================================================
@@ -420,7 +428,7 @@ export class SurfaceSystem {
 
         const grassNoise =
             THREE.MathUtils.smoothstep(
-                noise,
+                surfaceNoise,
                 0.3,
                 0.55
             );
@@ -560,92 +568,129 @@ export class SurfaceSystem {
     // SURFACE TYPE
     // ==================================================
 
-    getSurface(
-        x,
-        z,
-        terrain
+getSurface(
+    x,
+    z,
+    terrain,
+    terrainSample = null,
+    surfaceNoise = null
+) {
+
+    // --------------------------------------------------
+    // SHARED TERRAIN SAMPLE
+    // --------------------------------------------------
+
+    if (terrainSample === null) {
+
+        const worldGenerator =
+            terrain.worldGenerator ?? terrain;
+
+        terrainSample =
+            worldGenerator.getTerrainSample(
+                x,
+                z
+            );
+    }
+
+
+    // --------------------------------------------------
+    // SHARED SURFACE NOISE
+    // --------------------------------------------------
+
+    if (surfaceNoise === null) {
+
+        surfaceNoise =
+            this.getSurfaceNoise(
+                x,
+                z
+            );
+    }
+
+
+    // --------------------------------------------------
+    // SURFACE WEIGHTS
+    // --------------------------------------------------
+
+    const weights =
+        this.getSurfaceWeights(
+            x,
+            z,
+            terrain,
+            terrainSample,
+            surfaceNoise
+        );
+
+
+    // --------------------------------------------------
+    // DETERMINE SURFACE TYPE
+    // --------------------------------------------------
+
+    let type =
+        this.SURFACE.GRASS;
+
+    let highest =
+        weights.grass;
+
+
+    if (
+        weights.dirt >
+        highest
     ) {
 
-        const weights =
-            this.getSurfaceWeights(
-                x,
-                z,
-                terrain
-            );
+        highest =
+            weights.dirt;
 
-
-        let type =
-            this.SURFACE.GRASS;
-
-
-        let highest =
-            weights.grass;
-
-
-        if (
-            weights.dirt >
-            highest
-        ) {
-
-            highest =
-                weights.dirt;
-
-            type =
-                this.SURFACE.DIRT;
-        }
-
-
-        if (
-            weights.gravel >
-            highest
-        ) {
-
-            highest =
-                weights.gravel;
-
-            type =
-                this.SURFACE.GRAVEL;
-        }
-
-
-        if (
-            weights.rock >
-            highest
-        ) {
-
-            highest =
-                weights.rock;
-
-            type =
-                this.SURFACE.ROCK;
-        }
-
-
-        return {
-
-            type,
-
-            weights,
-
-            noise:
-                this.getSurfaceNoise(
-                    x,
-                    z
-                ),
-
-            height:
-                terrain.getHeight(
-                    x,
-                    z
-                ),
-
-            slope:
-                terrain.getSlope(
-                    x,
-                    z
-                )
-        };
+        type =
+            this.SURFACE.DIRT;
     }
+
+
+    if (
+        weights.gravel >
+        highest
+    ) {
+
+        highest =
+            weights.gravel;
+
+        type =
+            this.SURFACE.GRAVEL;
+    }
+
+
+    if (
+        weights.rock >
+        highest
+    ) {
+
+        highest =
+            weights.rock;
+
+        type =
+            this.SURFACE.ROCK;
+    }
+
+
+    // --------------------------------------------------
+    // RETURN
+    // --------------------------------------------------
+
+    return {
+
+        type,
+
+        weights,
+
+        noise:
+            surfaceNoise,
+
+        height:
+            terrainSample.height,
+
+        slope:
+            terrainSample.slope
+    };
+}
 
 
     // ==================================================
@@ -701,61 +746,132 @@ export class SurfaceSystem {
     // ==================================================
     // SURFACE COLOR
     // ==================================================
+getSurfaceColor(
+    x,
+    z,
+    terrain,
+    terrainSample = null,
+    surfaceWeights = null,
+    surfaceNoise = null
+) {
 
-    getSurfaceColor(
-        x,
-        z,
-        terrain
-    ) {
+    let weights =
+        surfaceWeights;
+
+
+    // --------------------------------------------------
+    // FALLBACK
+    // --------------------------------------------------
+
+    if (weights === null) {
 
         const surface =
             this.getSurface(
                 x,
                 z,
-                terrain
+                terrain,
+                terrainSample,
+                surfaceNoise
+            );
+
+        weights =
+            surface.weights;
+    }
+
+
+    // --------------------------------------------------
+    // DETERMINE DOMINANT SURFACE
+    // --------------------------------------------------
+
+    let type =
+        this.SURFACE.GRASS;
+
+    let highest =
+        weights.grass;
+
+
+    if (
+        weights.dirt >
+        highest
+    ) {
+
+        highest =
+            weights.dirt;
+
+        type =
+            this.SURFACE.DIRT;
+    }
+
+
+    if (
+        weights.gravel >
+        highest
+    ) {
+
+        highest =
+            weights.gravel;
+
+        type =
+            this.SURFACE.GRAVEL;
+    }
+
+
+    if (
+        weights.rock >
+        highest
+    ) {
+
+        highest =
+            weights.rock;
+
+        type =
+            this.SURFACE.ROCK;
+    }
+
+
+    // --------------------------------------------------
+    // COLOR
+    // --------------------------------------------------
+
+    switch (
+        type
+    ) {
+
+        case this.SURFACE.GRASS:
+
+            return new THREE.Color(
+                0x55a832
             );
 
 
-        switch (
-        surface.type
-        ) {
+        case this.SURFACE.DIRT:
 
-            case this.SURFACE.GRASS:
-
-                return new THREE.Color(
-                    0x55a832
-                );
+            return new THREE.Color(
+                0x8b6542
+            );
 
 
-            case this.SURFACE.DIRT:
+        case this.SURFACE.GRAVEL:
 
-                return new THREE.Color(
-                    0x8b6542
-                );
-
-
-            case this.SURFACE.GRAVEL:
-
-                return new THREE.Color(
-                    0x8b8a80
-                );
+            return new THREE.Color(
+                0x8b8a80
+            );
 
 
-            case this.SURFACE.ROCK:
+        case this.SURFACE.ROCK:
 
-                return new THREE.Color(
-                    0x55585a
-                );
+            return new THREE.Color(
+                0x55585a
+            );
 
 
-            default:
+        default:
 
-                return new THREE.Color(
-                    0xff00ff
-                );
-        }
+            return new THREE.Color(
+                0xff00ff
+            );
     }
-
+}
 
     // ==================================================
     // DEBUG INFORMATION

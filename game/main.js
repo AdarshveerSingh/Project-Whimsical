@@ -832,8 +832,12 @@ function animate() {
     requestAnimationFrame(
         animate
     );
+
     stats.begin();
 
+if (performanceDebug.enabled) {
+    performanceDebug.beginFrame();
+}
     const delta =
         clock.getDelta();
 
@@ -916,8 +920,14 @@ bushSystem.update(
     // ==============================================
     composer.render();
 
-    if (performanceDebug.enabled) {
+
+
+if (performanceDebug.enabled) {
+
+    performanceDebug.endGPUQuery();
+
     performanceDebug.update(delta);
+
 }
 
     stats.end();

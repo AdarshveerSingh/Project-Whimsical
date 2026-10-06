@@ -945,11 +945,12 @@ this.fogFar =
     // SURFACE SUITABILITY
     // ==================================================
 
-    getSurfaceSuitability(
-        x,
-        z,
-        terrain
-    ) {
+getSurfaceSuitability(
+    x,
+    z,
+    terrain,
+    surfaceData = null
+) {
 
         if (
             !this.surfaceSystem
@@ -966,7 +967,9 @@ this.fogFar =
                 z,
                 terrain.worldGenerator
             );
-
+        if (surfaceData) {
+    surfaceData.surface = surface;
+}
 
         const weights =
             surface.weights;
@@ -1194,14 +1197,15 @@ this.fogFar =
                 // ==================================================
                 // SURFACE
                 // ==================================================
+const surfaceData = {};
 
-                const suitability =
-                    this.getSurfaceSuitability(
-                        baseX,
-                        baseZ,
-                        chunk.terrain
-                    );
-
+const suitability =
+    this.getSurfaceSuitability(
+        baseX,
+        baseZ,
+        chunk.terrain,
+        surfaceData
+    );
 
                 // ==================================================
                 // SPAWN PROBABILITY
@@ -1445,12 +1449,11 @@ if (
                     // ==================================================
                     // TERRAIN HEIGHT
                     // ==================================================
-
-                    const y =
-                        chunk.terrain.worldGenerator.getHeight(
-                            bushX,
-                            bushZ
-                        );
+const y =
+    chunk.terrain.worldGenerator.getHeight(
+        bushX,
+        bushZ
+    );
 
 
                     // ==================================================

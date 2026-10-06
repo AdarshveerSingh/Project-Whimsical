@@ -36,9 +36,240 @@ export class PerformanceDebug {
 
         this.recording = false;
         this.samples = [];
+
+        // ---------------------------------------------------------
+// CPU / GPU TIMING
+// ---------------------------------------------------------
+
+this.cpuFrameStart = 0;
+this.cpuFrameMs = 0;
+this.totalCpuMs = 0;
+
+this.gpuFrameMs = null;
+
+this.gpuQuery = null;
+this.gpuQueryPending = false;
+this.gpuTimer = null;
+this.gpuQuerySupported = false;
+
+this.initGPUTimer();
+    }
+
+initGPUTimer() {
+
+    const gl = this.renderer.getContext();
+
+    // WebGL 2
+    if (gl instanceof WebGL2RenderingContext) {
+
+        this.gpuTimer =
+            gl.getExtension("EXT_disjoint_timer_query_webgl2");
+
+        if (this.gpuTimer) {
+
+            this.gpuQuerySupported = true;
+
+        }
+
+        return;
     }
 
 
+    // WebGL 1 fallback
+    this.gpuTimer =
+        gl.getExtension("EXT_disjoint_timer_query");
+
+    if (this.gpuTimer) {
+
+        this.gpuQuerySupported = true;
+
+    }
+
+}
+beginFrame() {
+
+    if (!this.enabled) return;
+
+    this.cpuFrameStart = performance.now();
+
+    this.pollGPUQuery();
+
+    this.beginGPUQuery();
+
+}
+
+
+beginGPUQuery() {
+
+    if (
+        !this.enabled ||
+        !this.gpuQuerySupported ||
+        this.gpuQueryPending
+    ) {
+        return;
+    }
+
+    const gl = this.renderer.getContext();
+
+    // WebGL 2
+    if (gl instanceof WebGL2RenderingContext) {
+
+        this.gpuQuery = gl.createQuery();
+
+        gl.beginQuery(
+            this.gpuTimer.TIME_ELAPSED_EXT,
+            this.gpuQuery
+        );
+
+        this.gpuQueryPending = true;
+
+        return;
+    }
+
+    // WebGL 1
+    this.gpuQuery =
+        this.gpuTimer.createQueryEXT();
+
+    this.gpuTimer.beginQueryEXT(
+        this.gpuTimer.TIME_ELAPSED_EXT,
+        this.gpuQuery
+    );
+
+    this.gpuQueryPending = true;
+
+}
+
+
+endGPUQuery() {
+
+    if (
+        !this.enabled ||
+        !this.gpuQuerySupported ||
+        !this.gpuQueryPending
+    ) {
+        return;
+    }
+
+    const gl = this.renderer.getContext();
+
+    // WebGL 2
+    if (gl instanceof WebGL2RenderingContext) {
+
+        gl.endQuery(
+            this.gpuTimer.TIME_ELAPSED_EXT
+        );
+
+        return;
+    }
+
+    // WebGL 1
+    this.gpuTimer.endQueryEXT(
+        this.gpuTimer.TIME_ELAPSED_EXT
+    );
+
+}
+
+
+pollGPUQuery() {
+
+    if (
+        !this.gpuQuerySupported ||
+        !this.gpuQueryPending ||
+        !this.gpuQuery
+    ) {
+        return;
+    }
+
+    const gl = this.renderer.getContext();
+
+    let available = false;
+    let disjoint = false;
+    let time = null;
+
+    // WebGL 2
+    if (gl instanceof WebGL2RenderingContext) {
+
+        available =
+            gl.getQueryParameter(
+                this.gpuQuery,
+                gl.QUERY_RESULT_AVAILABLE
+            );
+
+        disjoint =
+            gl.getParameter(
+                this.gpuTimer.GPU_DISJOINT_EXT
+            );
+
+        if (available && !disjoint) {
+
+            time =
+                gl.getQueryParameter(
+                    this.gpuQuery,
+                    gl.QUERY_RESULT
+                );
+
+        }
+
+    }
+
+    // WebGL 1
+    else {
+
+        available =
+            this.gpuTimer.getQueryObjectEXT(
+                this.gpuQuery,
+                this.gpuTimer.QUERY_RESULT_AVAILABLE_EXT
+            );
+
+        disjoint =
+            gl.getParameter(
+                this.gpuTimer.GPU_DISJOINT_EXT
+            );
+
+        if (available && !disjoint) {
+
+            time =
+                this.gpuTimer.getQueryObjectEXT(
+                    this.gpuQuery,
+                    this.gpuTimer.QUERY_RESULT_EXT
+                );
+
+        }
+
+    }
+
+    if (!available) {
+
+        return;
+
+    }
+
+    if (time !== null) {
+
+        // GPU timer is in nanoseconds.
+        this.gpuFrameMs = time / 1000000;
+
+    }
+
+    if (
+        gl instanceof WebGL2RenderingContext
+    ) {
+
+        gl.deleteQuery(this.gpuQuery);
+
+    }
+    else {
+
+        this.gpuTimer.deleteQueryEXT(
+            this.gpuQuery
+        );
+
+    }
+
+    this.gpuQuery = null;
+    this.gpuQueryPending = false;
+
+}
     enable() {
 
         if (this.enabled) return;
@@ -106,6 +337,9 @@ export class PerformanceDebug {
     disable() {
 
         if (!this.enabled) return;
+
+        this.cpuFrameMs =
+    performance.now() - this.cpuFrameStart;
 
         this.enabled = false;
 
@@ -587,6 +821,10 @@ export class PerformanceDebug {
         // Absolutely nothing happens while debug is disabled.
         if (!this.enabled) return;
 
+        this.cpuFrameMs =
+    performance.now() - this.cpuFrameStart;
+
+this.totalCpuMs += this.cpuFrameMs;
 
         this.frameCount++;
 
@@ -704,28 +942,67 @@ export class PerformanceDebug {
                     ? position.z
                     : null;
 
+                    const frameBudget = 1000 / 144;
+
+const avgCpuMs =
+    this.totalCpuMs / this.frameCount;
+
+const cpuUsage =
+    Math.min(
+        (avgCpuMs / frameBudget) * 100,
+        200
+    );
+
+const gpuUsage =
+    this.gpuFrameMs === null
+        ? null
+        : Math.min(
+            (this.gpuFrameMs / frameBudget) * 100,
+            200
+        );
 
             // -----------------------------------------------------
             // RECORDING SAMPLE
             // -----------------------------------------------------
 
-            const sample = {
+ const sample = {
+    time: Number(
+        this.recordingTime.toFixed(2)
+    ),
 
-                time: Number(
-                    this.recordingTime.toFixed(2)
-                ),
+    fps: Number(
+        fps.toFixed(2)
+    ),
 
-                fps: Number(
-                    fps.toFixed(2)
-                ),
+    frameTime: Number(
+        frameTime.toFixed(2)
+    ),
 
-                frameTime: Number(
-                    frameTime.toFixed(2)
-                ),
+    cpuMs: Number(
+        avgCpuMs.toFixed(3)
+    ),
 
-                avgDrawCalls: Number(
-                    avgDrawCalls.toFixed(2)
-                ),
+    cpuUsage: Number(
+        cpuUsage.toFixed(1)
+    ),
+
+    gpuMs:
+        this.gpuFrameMs === null
+            ? null
+            : Number(
+                this.gpuFrameMs.toFixed(3)
+            ),
+
+    gpuUsage:
+        gpuUsage === null
+            ? null
+            : Number(
+                gpuUsage.toFixed(1)
+            ),
+
+    avgDrawCalls: Number(
+        avgDrawCalls.toFixed(2)
+    ),
 
                 avgTriangles:
                     Math.round(avgTriangles),
@@ -798,7 +1075,78 @@ export class PerformanceDebug {
             // PERFORMANCE UI
             // -----------------------------------------------------
 
+
+const getUsageColor = (usage) => {
+
+    if (usage === null) {
+        return "#888";
+    }
+
+    if (usage <= 50) {
+        return "#4ade80";
+    }
+
+    if (usage <= 75) {
+        return "#facc15";
+    }
+
+    if (usage <= 100) {
+        return "#fb923c";
+    }
+
+    return "#ef4444";
+
+};
+
+
+const cpuColor =
+    getUsageColor(cpuUsage);
+
+const gpuColor =
+    getUsageColor(gpuUsage);
+
             this.performanceBox.innerHTML = `
+
+            <div style="
+    font-weight:bold;
+    margin-bottom:6px;
+">
+    PERFORMANCE
+    ${this.recording ? " • RECORDING" : ""}
+</div>
+
+<div style="
+    display:flex;
+    justify-content:space-between;
+    color:${cpuColor};
+">
+    <span>CPU</span>
+    <span>
+        ${cpuUsage.toFixed(0)}%
+        &nbsp;
+        ${avgCpuMs.toFixed(2)} ms
+    </span>
+</div>
+
+<div style="
+    display:flex;
+    justify-content:space-between;
+    color:${gpuColor};
+">
+    <span>GPU</span>
+    <span>
+        ${
+            gpuUsage === null
+                ? "N/A"
+                : `${gpuUsage.toFixed(0)}%`
+        }
+        ${
+            this.gpuFrameMs === null
+                ? ""
+                : `&nbsp; ${this.gpuFrameMs.toFixed(2)} ms`
+        }
+    </span>
+</div>
 
                 <div style="
                     font-weight:bold;
@@ -891,6 +1239,7 @@ export class PerformanceDebug {
             this.totalPoints = 0;
 
             this.totalLines = 0;
+            this.totalCpuMs = 0;
         }
     }
 
@@ -940,6 +1289,7 @@ export class PerformanceDebug {
 
         this.totalLines = 0;
 
+        this.totalCpuMs = 0;
 
         this.startRecordingButton.disabled =
             true;

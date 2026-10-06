@@ -920,67 +920,86 @@ getHeight(
 
     }
 
+// ==================================================
+// TERRAIN SAMPLE
+// ==================================================
 
-    // ==================================================
-    // TERRAIN DATA
-    // ==================================================
-
-    getTerrainData(
-        x,
-        z
-    ) {
-
-        const height =
-            this.getHeight(
-                x,
-                z
-            );
-
-
-        const normal =
-            this.getNormal(
-                x,
-                z
-            );
-
-
-        const slope =
-            Math.acos(
-
-                THREE.MathUtils.clamp(
-
-                    normal.y,
-
-                    -1.0,
-
-                    1.0
-
-                )
-
-            );
-
-
-        return {
-
+getTerrainSample(
+    x,
+    z
+) {
+    const height =
+        this.getHeight(
             x,
+            z
+        );
 
-            z,
+    const epsilon =
+        0.5;
 
-            height,
+    const heightLeft =
+        this.getHeight(
+            x - epsilon,
+            z
+        );
 
-            normal,
+    const heightRight =
+        this.getHeight(
+            x + epsilon,
+            z
+        );
 
-            slope,
+    const heightBack =
+        this.getHeight(
+            x,
+            z - epsilon
+        );
 
-            slopeDegrees:
+    const heightForward =
+        this.getHeight(
+            x,
+            z + epsilon
+        );
 
-                THREE.MathUtils.radToDeg(
-                    slope
-                )
+    const dx =
+        heightRight -
+        heightLeft;
 
-        };
+    const dz =
+        heightForward -
+        heightBack;
 
-    }
+    const normal =
+        new THREE.Vector3(
+            -dx,
+            epsilon * 2.0,
+            -dz
+        );
+
+    normal.normalize();
+
+    const slope =
+        Math.acos(
+            THREE.MathUtils.clamp(
+                normal.y,
+                -1.0,
+                1.0
+            )
+        );
+
+    const slopeDegrees =
+        THREE.MathUtils.radToDeg(
+            slope
+        );
+
+    return {
+        height,
+        normal,
+        slope,
+        slopeDegrees
+    };
+}
+
 
 
     // ==================================================

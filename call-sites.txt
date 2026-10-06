@@ -1,0 +1,67 @@
+﻿========== getHeight ==========
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\debug\debugTerrain.js:88: this.terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\BiomeSystem.js:145: terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\BiomeSystem.js:294: terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\BushSystem.js:1450: chunk.terrain.worldGenerator.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\ChunkManager.js:952: return loadedChunk.terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\FlowerSystem.js:1077: .getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\FlowerSystem.js:1222: .getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:389: terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:637: terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:555: return this.worldGenerator.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:610: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:737: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:863: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:1149: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:1532: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:1938: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TreeSystem.js:704: chunk.terrain.worldGenerator.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:822: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:832: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:842: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:852: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:934: this.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\BushSystem.js:1433: chunk.terrain.worldGenerator.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\ChunkManager.js:893: return loadedChunk.terrain.getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\FlowerSystem.js:1108: .getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\FlowerSystem.js:1253: .getHeight(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\TreeSystem.js:727: chunk.terrain.worldGenerator.getHeight(
+
+========== getNormal ==========
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:576: return this.worldGenerator.getNormal(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:617: this.getNormal(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:993: this.getNormal(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:1156: this.getNormal(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:901: this.getNormal(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\WorldGenerator.js:941: this.getNormal(
+
+========== getSlope ==========
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\BiomeSystem.js:152: terrain.getSlope(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\BiomeSystem.js:301: terrain.getSlope(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:395: terrain.getSlope(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:643: terrain.getSlope(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:597: return this.worldGenerator.getSlope(
+
+========== getSurface ==========
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\debug\PropPlayground.js:260: surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\BushSystem.js:964: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\FlowerSystem.js:578: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:661: return this.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:680: this.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:712: this.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\SurfaceSystem.js:771: this.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:1664: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TerrainSystem.js:2068: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\TreeSystem.js:411: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\BushSystem.js:961: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\FlowerSystem.js:594: this.surfaceSystem.getSurface(
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\TreeSystem.js:425: this.surfaceSystem.getSurface(
+
+========== getTerrainData ==========
+
+========== getHeightGrid ==========
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\vegetation\GrassSystem.js:335: terrain.getHeightGrid();
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\game\world\RockSystem.js:825: terrain.getHeightGrid();
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\GrassSystem.js:350: terrain.getHeightGrid();
+C:\Users\adars\OneDrive\Desktop\adars\assignments\Assignments\uca_2026_cloned\BEE_Project_Beta\Practice\Project-Whimsical\placement_build\RockSystem.js:756: terrain.getHeightGrid();
+
