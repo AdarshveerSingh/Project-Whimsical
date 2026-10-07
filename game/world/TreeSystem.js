@@ -657,7 +657,7 @@ const suitability =
                 // ------------------------------------------------
 
                 const TREE_DENSITY_MULTIPLIER =
-                    0.009;
+                    0.109;
 
 
                 const probability =
@@ -843,7 +843,7 @@ if (this.placementRegistry) {
             mesh.receiveShadow =
                 false;
 
-
+            
             mesh.frustumCulled =
                 true;
 

@@ -6,6 +6,7 @@ import {
 
 import PropDistributionSystem from "./PropDistributionSystem.js";
 
+import { applyShadowOnly } from "../rendering/ShadowOnly.js";
 
 export class FlowerSystem {
 
@@ -402,7 +403,7 @@ const sourceMaterial =
 // unnaturally dark.
 
 const flowerMaterial =
-    new THREE.MeshBasicMaterial({
+    new THREE.MeshLambertMaterial({
 
         map:
             sourceMaterial.map || null,
@@ -433,6 +434,9 @@ this.applyWindShader(
     flowerMaterial,
     object.geometry
 );
+
+applyShadowOnly(flowerMaterial, 0.45);
+
 this.flowerModels.set(
 
     variation,
@@ -1347,7 +1351,7 @@ const y =
                 false;
 
             mesh.receiveShadow =
-                false;
+                true;
 
 
             for (

@@ -1,4 +1,3 @@
-import * as THREE from "three";
 // ==================================================
 // GrassShader.js
 // ==================================================
@@ -30,9 +29,7 @@ export function applyGrassShader(
         shader.uniforms.showNoise = {
             value: false
         };
-        shader.uniforms.shadowDarkness = { value: 0.45 };
-        shader.uniforms.shadowRootColor = { value: new THREE.Color('#1b7264') };
-        shader.uniforms.shadowTipColor = { value: new THREE.Color('#2a8f6a') };
+
         material.userData.shader = shader;
 
 
@@ -698,28 +695,7 @@ varying float vColorVariation;
 
             );
 
-        // ==================================================
-// SHADOW COORDINATES FOR WIND-DEFORMED GRASS
-// ==================================================
 
-shader.vertexShader = shader.vertexShader.replace(
-    "#include <shadowmap_vertex>",
-    `
-        #include <shadowmap_vertex>
-
-        #if NUM_DIR_LIGHT_SHADOWS > 0
-            for (
-                int i = 0;
-                i < NUM_DIR_LIGHT_SHADOWS;
-                i++
-            ) {
-                vDirectionalShadowCoord[i] =
-                    directionalShadowMatrix[i] *
-                    vec4(worldVertex, 1.0);
-            }
-        #endif
-    `
-);
         // ==================================================
         // FRAGMENT VARIABLES
         // ==================================================
@@ -733,22 +709,12 @@ varying float vGrassHeight;
 varying float vWindNoise;
 
 varying float vBendAmount;
-uniform float shadowDarkness;
-uniform vec3 shadowRootColor;
-uniform vec3 shadowTipColor;
+
 varying float vColorVariation;
 
         ` + shader.fragmentShader;
 
-    // Pull in getShadowMask(), which Lambert doesn't include by default.
-// It must come after shadowmap_pars_fragment, which it depends on.
-shader.fragmentShader = shader.fragmentShader.replace(
-    "#include <shadowmap_pars_fragment>",
-    `
-    #include <shadowmap_pars_fragment>
-    #include <shadowmask_pars_fragment>
-    `
-);
+
         // ==================================================
         // TEXTURE
         // ==================================================
@@ -999,33 +965,6 @@ diffuseColor.rgb =
                 `
 
             );
-            // ==================================================
-// UNLIT + SHADOWS ONLY
-// ==================================================
-// Ignore diffuse/ambient/hemisphere lighting entirely.
-// Only use the shadow map to darken the grass.
-
-const opaqueChunk = shader.fragmentShader.includes("#include <opaque_fragment>")
-    ? "#include <opaque_fragment>"
-    : "#include <output_fragment>"; // older three.js versions
-
-shader.fragmentShader = shader.fragmentShader.replace(
-    opaqueChunk,
-    `
-    // 1.0 = fully lit, 0.0 = fully in shadow
-    float grassShadow = getShadowMask();
-
-// gradient from root to tip, matching the normal grass gradient
-float shadowGradient = smoothstep(0.05, 0.95, vGrassHeight);
-vec3 shadowColor = mix(shadowRootColor, shadowTipColor, shadowGradient);
-
-// 1.0 = lit (original color), 0.0 = shadowed (gradient color)
-outgoingLight = mix(shadowColor, diffuseColor.rgb, grassShadow);
-    
-
-    ${opaqueChunk}
-    `
-);
 
     };
 

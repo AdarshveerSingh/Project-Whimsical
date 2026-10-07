@@ -90,7 +90,7 @@ export function createShadowSystem(
         2048
     );
 
-
+    
     // ========================================================
     // SHADOW CAMERA
     // ========================================================
@@ -114,10 +114,10 @@ sun.shadow.camera.far =
     250;
 
 sun.shadow.bias =
-    -0.0001;
+    -0.0005;
 
 sun.shadow.normalBias =
-    0.025;
+    0.05;
 
 sun.shadow.radius =
     1.8;

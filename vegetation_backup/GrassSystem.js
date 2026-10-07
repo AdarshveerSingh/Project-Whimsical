@@ -180,14 +180,27 @@ export class GrassSystem
 
 
         this.grassMaterial =
-            new THREE.MeshLambertMaterial({
-    map: texture,
-    transparent: true,
-    alphaTest: 0.5,
-    side: THREE.DoubleSide,
-    fog: true,
-    color: 0xffffff
-});
+            new THREE.MeshBasicMaterial({
+
+                map:
+                    texture,
+
+                transparent:
+                    true,
+
+                alphaTest:
+                    0.5,
+
+                side:
+                    THREE.DoubleSide,
+
+                fog:
+                    true,
+
+                color:
+                    0xffffff
+
+            });
 
 
         applyGrassShader(
@@ -1138,7 +1151,7 @@ if (this.placementRegistry) {
             false;
 
         mesh.receiveShadow =
-            true;
+            false;
 
 
         // ==================================================
