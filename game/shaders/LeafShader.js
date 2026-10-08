@@ -4,7 +4,39 @@ import * as THREE from "three";
 // LEAF SHADER
 // MeshStandardMaterial + wind + stylized foliage gradient
 // ============================================================
+const LEAF_WIND_GLSL = /* glsl */`
+    #ifdef USE_INSTANCING
+        vec3 leafWorldPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+    #else
+        vec3 leafWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+    #endif
 
+    float leafPhase = leafWorldPos.x * uWindScale * 0.35
+                    + leafWorldPos.z * uWindScale * 0.25
+                    + uLeafTime * uWindSpeed;
+
+    float wind = sin(leafPhase) * 0.55
+               + sin(leafPhase * 1.73 + 2.4) * 0.30
+               + sin(leafPhase * 3.91 + 1.2) * 0.15;
+
+    float leafHeight = clamp(position.y * 0.5 + 0.5, 0.20, 1.0);
+
+    transformed.x += wind * uWindStrength * leafHeight;
+    transformed.z += wind * uWindStrength * 0.40 * leafHeight;
+
+    float flutter = sin(uLeafTime * uWindSpeed * 2.5
+                      + leafWorldPos.x * 4.0 + leafWorldPos.z * 3.0);
+
+    transformed.x += flutter * uWindStrength * 0.12 * leafHeight;
+    transformed.z += flutter * uWindStrength * 0.05 * leafHeight;
+`;
+
+const LEAF_WIND_UNIFORMS_GLSL = /* glsl */`
+    uniform float uLeafTime;
+    uniform float uWindStrength;
+    uniform float uWindSpeed;
+    uniform float uWindScale;
+`;
 export function applyLeafShader(
     originalMaterial,
     {
@@ -20,7 +52,12 @@ export function applyLeafShader(
             )
     } = {}
 ) {
-
+    const sharedUniforms = {
+    uLeafTime:     { value: 0 },
+    uWindStrength: { value: windStrength },
+    uWindSpeed:    { value: windSpeed },
+    uWindScale:    { value: windScale }
+};
     // ========================================================
     // ORIGINAL GLB TEXTURE
     // ========================================================
@@ -52,7 +89,7 @@ export function applyLeafShader(
     // ========================================================
 
     const leafMaterial =
-        new THREE.MeshStandardMaterial({
+        new THREE.MeshLambertMaterial({
 
             map:
                 texture,
@@ -104,24 +141,7 @@ export function applyLeafShader(
             // UNIFORMS
             // ==================================================
 
-            shader.uniforms.uLeafTime = {
-                value: 0
-            };
-
-            shader.uniforms.uWindStrength = {
-                value:
-                    windStrength
-            };
-
-            shader.uniforms.uWindSpeed = {
-                value:
-                    windSpeed
-            };
-
-            shader.uniforms.uWindScale = {
-                value:
-                    windScale
-            };
+            Object.assign(shader.uniforms, sharedUniforms);
 
             // ==================================================
             // COLOR UNIFORMS
@@ -168,154 +188,17 @@ export function applyLeafShader(
             // VERTEX UNIFORMS
             // ==================================================
 
-            shader.vertexShader = `
-
-                uniform float uLeafTime;
-                uniform float uWindStrength;
-                uniform float uWindSpeed;
-                uniform float uWindScale;
-
-            ` + shader.vertexShader;
-
             // ==================================================
             // WIND
             // ==================================================
 
-            shader.vertexShader =
-                shader.vertexShader.replace(
+            shader.vertexShader = LEAF_WIND_UNIFORMS_GLSL + shader.vertexShader;
 
-                    "#include <begin_vertex>",
-
-                    `
-
-                    #include <begin_vertex>
-
-                    // =========================================
-                    // WORLD POSITION
-                    // =========================================
-
-                    vec3 leafWorldPos =
-                        (
-                            modelMatrix *
-                            vec4(
-                                transformed,
-                                1.0
-                            )
-                        ).xyz;
-
-                    // =========================================
-                    // WIND PHASE
-                    // =========================================
-
-                    float leafPhase =
-                        leafWorldPos.x *
-                        uWindScale *
-                        0.35
-
-                        +
-
-                        leafWorldPos.z *
-                        uWindScale *
-                        0.25
-
-                        +
-
-                        uLeafTime *
-                        uWindSpeed;
-
-                    // =========================================
-                    // WIND WAVES
-                    // =========================================
-
-                    float wind1 =
-                        sin(
-                            leafPhase
-                        );
-
-                    float wind2 =
-                        sin(
-                            leafPhase *
-                            1.73
-                            +
-                            2.4
-                        );
-
-                    float wind3 =
-                        sin(
-                            leafPhase *
-                            3.91
-                            +
-                            1.2
-                        );
-
-                    float wind =
-                        wind1 * 0.55
-                        +
-                        wind2 * 0.30
-                        +
-                        wind3 * 0.15;
-
-                    // =========================================
-                    // HEIGHT MASK
-                    // =========================================
-
-                    float leafHeight =
-                        clamp(
-                            position.y * 0.5 + 0.5,
-                            0.20,
-                            1.0
-                        );
-
-                    // =========================================
-                    // MAIN SWAY
-                    // =========================================
-
-                    transformed.x +=
-                        wind *
-                        uWindStrength *
-                        leafHeight;
-
-                    transformed.z +=
-                        wind *
-                        uWindStrength *
-                        0.40 *
-                        leafHeight;
-
-                    // =========================================
-                    // FLUTTER
-                    // =========================================
-
-                    float flutter =
-                        sin(
-                            uLeafTime *
-                            uWindSpeed *
-                            2.5
-
-                            +
-
-                            leafWorldPos.x *
-                            4.0
-
-                            +
-
-                            leafWorldPos.z *
-                            3.0
-                        );
-
-                    transformed.x +=
-                        flutter *
-                        uWindStrength *
-                        0.12 *
-                        leafHeight;
-
-                    transformed.z +=
-                        flutter *
-                        uWindStrength *
-                        0.05 *
-                        leafHeight;
-
-                    `
-                );
+shader.vertexShader = shader.vertexShader.replace(
+    "#include <begin_vertex>",
+    `#include <begin_vertex>
+     ${LEAF_WIND_GLSL}`
+);
 
             // ==================================================
             // FRAGMENT UNIFORMS
@@ -458,337 +341,33 @@ export function applyLeafShader(
     //
     // ========================================================
 
-    const shadowMaterial =
-        new THREE.ShaderMaterial({
-
-            uniforms: {
-
-                map: {
-                    value:
-                        texture
-                },
-
-                uTime: {
-                    value:
-                        0
-                },
-
-                uWindStrength: {
-                    value:
-                        windStrength
-                },
-
-                uWindSpeed: {
-                    value:
-                        windSpeed
-                },
-
-                uWindScale: {
-                    value:
-                        windScale
-                }
-            },
-
-            // ==================================================
-            // SHADOW VERTEX SHADER
-            // ==================================================
-
-            vertexShader: /* glsl */`
-
-                uniform float uTime;
-                uniform float uWindStrength;
-                uniform float uWindSpeed;
-                uniform float uWindScale;
-
-                varying vec2 vUv;
-
-                void main() {
-
-                    // =========================================
-                    // UV
-                    // =========================================
-
-                    vUv =
-                        uv;
-
-                    vec3 p =
-                        position;
-
-                    // =========================================
-                    // WORLD POSITION
-                    // =========================================
-
-                    vec3 worldPos =
-                        (
-                            modelMatrix *
-                            vec4(
-                                position,
-                                1.0
-                            )
-                        ).xyz;
-
-                    // =========================================
-                    // WIND PHASE
-                    // =========================================
-
-                    float phase =
-                        worldPos.x *
-                        uWindScale *
-                        0.35
-
-                        +
-
-                        worldPos.z *
-                        uWindScale *
-                        0.25
-
-                        +
-
-                        uTime *
-                        uWindSpeed;
-
-                    // =========================================
-                    // WIND WAVES
-                    // =========================================
-
-                    float wind1 =
-                        sin(
-                            phase
-                        );
-
-                    float wind2 =
-                        sin(
-                            phase *
-                            1.73
-                            +
-                            2.4
-                        );
-
-                    float wind3 =
-                        sin(
-                            phase *
-                            3.91
-                            +
-                            1.2
-                        );
-
-                    float wind =
-                        wind1 * 0.55
-                        +
-                        wind2 * 0.30
-                        +
-                        wind3 * 0.15;
-
-                    // =========================================
-                    // HEIGHT
-                    // =========================================
-
-                    float height =
-                        clamp(
-                            position.y * 0.5 + 0.5,
-                            0.20,
-                            1.0
-                        );
-
-                    // =========================================
-                    // MAIN SWAY
-                    // =========================================
-
-                    p.x +=
-                        wind *
-                        uWindStrength *
-                        height;
-
-                    p.z +=
-                        wind *
-                        uWindStrength *
-                        0.40 *
-                        height;
-
-                    // =========================================
-                    // FLUTTER
-                    // =========================================
-
-                    float flutter =
-                        sin(
-                            uTime *
-                            uWindSpeed *
-                            2.5
-
-                            +
-
-                            worldPos.x *
-                            4.0
-
-                            +
-
-                            worldPos.z *
-                            3.0
-                        );
-
-                    p.x +=
-                        flutter *
-                        uWindStrength *
-                        0.12 *
-                        height;
-
-                    p.z +=
-                        flutter *
-                        uWindStrength *
-                        0.05 *
-                        height;
-
-                    // =========================================
-                    // FINAL POSITION
-                    // =========================================
-
-                    gl_Position =
-                        projectionMatrix *
-                        modelViewMatrix *
-                        vec4(
-                            p,
-                            1.0
-                        );
-                }
-
-            `,
-
-            // ==================================================
-            // SHADOW FRAGMENT SHADER
-            // ==================================================
-
-            fragmentShader: /* glsl */`
-
-                uniform sampler2D map;
-
-                varying vec2 vUv;
-
-                void main() {
-
-                    // =========================================
-                    // SAMPLE SAME GLB TEXTURE
-                    // =========================================
-
-                    vec4 diffuse =
-                        texture2D(
-                            map,
-                            vUv
-                        );
-
-                    // =========================================
-                    // ALPHA CUTOUT
-                    // =========================================
-                    //
-                    // KEEP EXACTLY AS BEFORE
-                    //
-                    // =========================================
-
-                    if (
-                        diffuse.a < 0.5
-                    ) {
-
-                        discard;
-                    }
-
-                    // =========================================
-                    // SHADOW OUTPUT
-                    // =========================================
-
-                    gl_FragColor =
-                        vec4(
-                            0.0,
-                            0.0,
-                            0.0,
-                            1.0
-                        );
-                }
-
-            `,
-
-            side:
-                THREE.DoubleSide,
-
-            transparent:
-                false,
-
-            depthWrite:
-                true,
-
-            depthTest:
-                true
-        });
-
-    // ========================================================
-    // TIME UPDATE
-    // ========================================================
-
-    function updateTime() {
-
-        const time =
-            performance.now() /
-            1000.0;
-
-        // ================================================
-        // VISIBLE LEAF SHADER
-        // ================================================
-
-        const shader =
-            leafMaterial
-                .userData
-                .leafShader;
-
-        if (
-            shader &&
-            shader.uniforms.uLeafTime
-        ) {
-
-            shader
-                .uniforms
-                .uLeafTime
-                .value =
-                    time;
-        }
-
-        // ================================================
-        // SHADOW
-        // ================================================
-
-        shadowMaterial
-            .uniforms
-            .uTime
-            .value =
-                time;
-    }
-
-    // ========================================================
-    // RENDER CALLBACKS
-    // ========================================================
-
-    leafMaterial.onBeforeRender =
-        updateTime;
-
-    shadowMaterial.onBeforeRender =
-        updateTime;
-
-    // ========================================================
-    // STORE SHADOW MATERIAL
-    // ========================================================
-
-    leafMaterial.userData =
-        leafMaterial.userData || {};
-
-    leafMaterial.userData.leafShadowMaterial =
-        shadowMaterial;
-
-    // ========================================================
-    // UPDATE
-    // ========================================================
-
-    leafMaterial.needsUpdate =
-        true;
-
-    shadowMaterial.needsUpdate =
-        true;
-
-    return leafMaterial;
+const depthMaterial = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    map: texture,
+    alphaTest: 0.5,
+    side: THREE.DoubleSide
+});
+
+depthMaterial.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, sharedUniforms);
+
+    shader.vertexShader = LEAF_WIND_UNIFORMS_GLSL + shader.vertexShader;
+
+    shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+         ${LEAF_WIND_GLSL}`
+    );
+};
+
+// separate cache key so it never shares a program with a plain depth material
+depthMaterial.customProgramCacheKey = () => "leaf-depth-wind";
+
+leafMaterial.userData.leafDepthMaterial = depthMaterial;
+leafMaterial.userData.leafTime = sharedUniforms.uLeafTime;
+
+leafMaterial.needsUpdate = true;
+depthMaterial.needsUpdate = true;
+   leafMaterial.customProgramCacheKey = () => "leaf-lambert-wind";
+return leafMaterial;
 }

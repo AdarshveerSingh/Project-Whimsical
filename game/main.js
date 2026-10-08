@@ -54,6 +54,7 @@ import {
 } from "./debug/PerformanceDebug.js";
 
 import { TerrainWorkerPool } from "./world/TerrainWorkerPool.js";
+import { FrustumTest } from "./debug/FrustumTest.js";
 // ==================================================
 // SCENE
 // ==================================================
@@ -436,7 +437,7 @@ const grassSystem =
 
         lodFar: 100,
 
-        placementRegistry: placementRegistry
+        placementRegistry: placementRegistry    
 
     });
 
@@ -528,6 +529,8 @@ const chunkManager =
 
         bushSystem,
 
+        placementRegistry,
+
         chunkSize: 64,
 
         viewDistance: 3,
@@ -593,8 +596,26 @@ window.addEventListener(
 
     }
 );
+// TEMPORARY FRUSTUM VISUALIZATION — REMOVE AFTER TESTING
+const frustumTest = new FrustumTest({
+    renderer,
+    scene,
+    camera,
+    player: fpsController
+});
 
+window.addEventListener("keydown", (event) => {
+    if (event.code === "F8" && !event.repeat) {
+        frustumTest.toggle();
+    }
+});
+window.shutdownGame = () => {
+    console.log("Shutting down game...");
 
+    chunkManager.dispose();
+
+    console.log("Game shutdown complete.");
+};
 
 // ==================================================
 // CAMERA MODE
@@ -912,6 +933,13 @@ bushSystem.update(
     delta
 );
 
+    const t = performance.now() / 1000;
+
+    // update leaf wind time (drives both leaves and their shadows)
+    for (const src of treeSystem.modelMeshes) {
+        const u = src.material.userData.leafTime;
+        if (src.isLeaf && u) u.value = t;
+    }
 
 
     // ==============================================
@@ -957,11 +985,13 @@ bushSystem.update(
 
     updateGodRaySunPosition();
 
-
+    frustumTest.update();
     // ==============================================
     // RENDER
     // ==============================================
     composer.render();
+
+    frustumTest.render();
 
 
 

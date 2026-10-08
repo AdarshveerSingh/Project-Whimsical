@@ -487,7 +487,7 @@ pollGPUQuery() {
 
         Object.assign(controls.style, {
             position: "fixed",
-            top: "250px",
+            top: "340px",
             right: "10px",
             zIndex: "10001",
             display: "flex",

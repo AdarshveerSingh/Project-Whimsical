@@ -8,7 +8,7 @@ export class TerrainWorkerPool {
         this.workers = [];
         this.queue = [];
         this.jobs = new Map();
-
+        this.disposed=false;
         for (let i = 0; i < workerCount; i++) {
 
             const worker = new Worker(
@@ -53,54 +53,64 @@ export class TerrainWorkerPool {
         }
     }
 
-    generate(data) {
-
-        return new Promise((resolve, reject) => {
-
- const jobId =
-    `terrain_${Date.now()}_${Math.random()}`;
-
-            const job = {
-                jobId,
-                data: {
-                    ...data,
-                    type: "generate",
-                    jobId
-                },
-                resolve,
-                reject
-            };
-
-            this.jobs.set(jobId, job);
-            this.queue.push(job);
-
-            this.processQueue();
-        });
+generate(data) {
+    if (this.disposed) {
+        return Promise.reject(
+            new Error("TerrainWorkerPool has been disposed.")
+        );
     }
 
-    processQueue() {
+    return new Promise((resolve, reject) => {
+        const jobId = `terrain_${Date.now()}_${Math.random()}`;
 
-        for (const entry of this.workers) {
+        const job = {
+            jobId,
+            data: {
+                ...data,
+                type: "generate",
+                jobId
+            },
+            resolve,
+            reject
+        };
 
-            if (entry.busy) {
-                continue;
-            }
+        this.jobs.set(jobId, job);
+        this.queue.push(job);
 
-            const job =
-                this.queue.shift();
+        this.processQueue();
+    });
+}
 
-            if (!job) {
-                return;
-            }
+processQueue() {
+    if (this.disposed) {
+        return;
+    }
 
-            entry.busy = true;
-            entry.job = job;
+    for (const entry of this.workers) {
+        if (entry.busy) {
+            continue;
+        }
 
-            entry.worker.postMessage(
-                job.data
-            );
+        const job = this.queue.shift();
+
+        if (!job) {
+            return;
+        }
+
+        entry.busy = true;
+        entry.job = job;
+
+        try {
+            entry.worker.postMessage(job.data);
+        } catch (error) {
+            this.jobs.delete(job.jobId);
+            entry.busy = false;
+            entry.job = null;
+            job.reject(error);
         }
     }
+}
+
 
     handleMessage(entry, data) {
 
@@ -144,14 +154,34 @@ export class TerrainWorkerPool {
         }
     }
 
-    dispose() {
-
-        for (const entry of this.workers) {
-            entry.worker.terminate();
-        }
-
-        this.workers.length = 0;
-        this.queue.length = 0;
-        this.jobs.clear();
+ dispose() {
+    if (this.disposed) {
+        return;
     }
+
+    this.disposed = true;
+
+    const error = new Error(
+        "TerrainWorkerPool was disposed before the job completed."
+    );
+
+    // Reject active and queued jobs so callers cannot hang.
+    for (const job of this.jobs.values()) {
+        job.reject(error);
+    }
+
+    this.jobs.clear();
+    this.queue.length = 0;
+
+    for (const entry of this.workers) {
+        entry.worker.onmessage = null;
+        entry.worker.onerror = null;
+        entry.worker.terminate();
+
+        entry.busy = false;
+        entry.job = null;
+    }
+
+    this.workers.length = 0;
+}
 }

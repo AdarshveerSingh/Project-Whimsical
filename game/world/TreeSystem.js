@@ -216,17 +216,14 @@ export class TreeSystem {
                         // ------------------------------------------------
 
                         this.modelMeshes.push({
-
-                            geometry,
-
-                            material,
-
-                            matrix:
-                                object.matrixWorld.clone(),
-
-                            isLeaf
-
-                        });
+    geometry,
+    material,
+    matrix: object.matrixWorld.clone(),
+    isLeaf,
+    depthMaterial: isLeaf
+        ? material.userData.leafDepthMaterial
+        : null
+});
 
                     }
                 );
@@ -657,7 +654,7 @@ const suitability =
                 // ------------------------------------------------
 
                 const TREE_DENSITY_MULTIPLIER =
-                    0.109;
+                    0.009;
 
 
                 const probability =
@@ -837,15 +834,13 @@ if (this.placementRegistry) {
                 );
 
 
-            mesh.castShadow =
-                true;
+mesh.castShadow = true;
+mesh.receiveShadow = true;
 
-            mesh.receiveShadow =
-                false;
-
-            
-            mesh.frustumCulled =
-                true;
+if (source.depthMaterial) {
+    mesh.customDepthMaterial = source.depthMaterial;
+}
+          
 
             // mesh.occlusionCulled = true;
 
@@ -927,6 +922,11 @@ if (this.placementRegistry) {
 
             mesh.instanceMatrix.needsUpdate =
                 true;
+            // Ensure bounds include all tree instances in this chunk.
+            mesh.computeBoundingSphere();
+
+// Allow Three.js to skip this batch when outside the camera frustum.
+            mesh.frustumCulled = true;
 
 
             // ----------------------------------------------------
@@ -995,10 +995,11 @@ if (this.placementRegistry) {
     this.placementRegistry
 ) {
 
-    this.placementRegistry.removeChunk(
-        chunkX,
-        chunkZ
-    );
+            this.placementRegistry?.removeChunkType(
+            chunkX,
+            chunkZ,
+            "tree"
+        );
 
 }
         this.chunks.delete(

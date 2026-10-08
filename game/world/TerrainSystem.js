@@ -4,31 +4,148 @@ import PropDistributionSystem from "./PropDistributionSystem.js";
 import { SurfaceSystem } from "./SurfaceSystem.js";
 import { WorldGenerator } from "./WorldGenerator.js";
 
+
+const SKIRT_DEPTH = 1.0;
+
+
+// ============================================================
+// GRID TEMPLATES
+// ============================================================
+//
+// Index and UV arrays depend only on the segment count, so they
+// are built once and reused. Only the typed arrays are shared;
+// every geometry still gets its own BufferAttribute objects
+// (sharing attribute objects across geometries is unsafe with
+// geometry.dispose()).
+//
+// Layout matches PlaneGeometry after rotateX(-PI/2):
+// x grows with ix, z grows with iz, index = iz * n + ix.
+// ============================================================
+
+const gridTemplates = new Map();
+
+function getGridTemplate(segments) {
+
+    let template = gridTemplates.get(segments);
+
+    if (template) {
+        return template;
+    }
+
+    const n = segments + 1;
+
+    const uvs = new Float32Array(n * n * 2);
+
+    for (let iz = 0; iz < n; iz++) {
+        for (let ix = 0; ix < n; ix++) {
+
+            const i = (iz * n + ix) * 2;
+
+            uvs[i] = ix / segments;
+            uvs[i + 1] = 1 - iz / segments;
+        }
+    }
+
+    const IndexArray = n * n > 65535 ? Uint32Array : Uint16Array;
+
+    const indices = new IndexArray(segments * segments * 6);
+
+    let k = 0;
+
+    for (let iz = 0; iz < segments; iz++) {
+        for (let ix = 0; ix < segments; ix++) {
+
+            const a = ix + n * iz;
+            const b = ix + n * (iz + 1);
+            const c = (ix + 1) + n * (iz + 1);
+            const d = (ix + 1) + n * iz;
+
+            indices[k++] = a;
+            indices[k++] = b;
+            indices[k++] = d;
+
+            indices[k++] = b;
+            indices[k++] = c;
+            indices[k++] = d;
+        }
+    }
+
+    template = { uvs, indices };
+
+    gridTemplates.set(segments, template);
+
+    return template;
+}
+
+
 export class TerrainSystem {
+
+    // ==================================================
+    // SHARED MATERIAL
+    // ==================================================
+    //
+    // Create one of these in ChunkManager and pass it to every
+    // chunk, instead of one ShaderMaterial per chunk.
+    //
+
+    static createMaterial() {
+
+        return new THREE.ShaderMaterial({
+
+            uniforms:
+                THREE.UniformsUtils.merge([
+                    THREE.UniformsLib.lights,
+                    TerrainShader.uniforms
+                ]),
+
+            vertexShader: TerrainShader.vertexShader,
+            fragmentShader: TerrainShader.fragmentShader,
+
+            side: THREE.DoubleSide,
+            fog: true,
+            lights: true
+        });
+    }
+
 
     constructor({
         scene,
         sun = null,
+
         size = 64,
+
+        // Mesh resolution (LOD). Must divide dataResolution.
         resolution = 64,
+
+        // Resolution of the generated data grid. Always generated
+        // once at this resolution; lower LOD meshes are subsampled
+        // from it, so LOD changes never touch the worker.
+        dataResolution = 32,
+
         baseHeight = 0.0,
         maxHeight = 14.2,
         heightScale = 6.0,
         seed = 482917,
+
         worldOffsetX = 0,
         worldOffsetZ = 0,
+
         surfaceSystem = null,
         terrainWorkerPool = null,
         onTerrainReady = null,
-        generationVersion,
-        disposed
+
+        // Optional shared instances (recommended)
+        worldGenerator = null,
+        propDistributionSystem = null,
+        material = null
     }) {
 
         this.scene = scene;
-
         this.sun = sun;
+
         this.size = size;
         this.resolution = resolution;
+        this.dataResolution = Math.max(dataResolution, resolution);
 
         this.baseHeight = baseHeight;
         this.maxHeight = maxHeight;
@@ -40,2445 +157,773 @@ export class TerrainSystem {
             this.heightScale;
 
         this.seed = seed;
-        this.worldGenerator =
-            new WorldGenerator({
-
-                seed:
-                    this.seed,
-
-                baseHeight:
-                    this.baseHeight,
-
-                maxHeight:
-                    this.maxHeight,
-
-                heightScale:
-                    this.heightScale
-
-            });
 
         this.worldOffsetX = worldOffsetX;
         this.worldOffsetZ = worldOffsetZ;
+
+        this.worldGenerator =
+            worldGenerator ||
+            new WorldGenerator({
+                seed: this.seed,
+                baseHeight: this.baseHeight,
+                maxHeight: this.maxHeight,
+                heightScale: this.heightScale
+            });
+
         this.surfaceSystem =
             surfaceSystem ||
-            new SurfaceSystem({
-                seed: this.seed
-            });
-        this.terrainWorkerPool =
-            terrainWorkerPool;
+            new SurfaceSystem({ seed: this.seed });
 
-        this.onTerrainReady =
-            onTerrainReady;
         this.propDistributionSystem =
-            new PropDistributionSystem({
-                seed: this.seed
-            });
+            propDistributionSystem ||
+            new PropDistributionSystem({ seed: this.seed });
+
+        this.terrainWorkerPool = terrainWorkerPool;
+        this.onTerrainReady = onTerrainReady;
+
+        this.ownsMaterial = !material;
+        this.material = material || TerrainSystem.createMaterial();
 
         this.geometry = null;
-
-        this.material = null;
-
         this.mesh = null;
 
         this.skirtGeometry = null;
+        this.skirtMesh = null;
 
         this.terrainGrid = null;
 
-        this.skirtMesh = null;
-
-
-        // this.hills = [];
-
-
-        this.fieldMin = 0.0;
-
-        this.fieldMax = 1.0;
-
-        this.fieldRange = 1.0;
-
-
-        // ==================================================
-        // MATERIAL
-        // ==================================================
-
-        this.material =
-            new THREE.ShaderMaterial({
-
-                uniforms:
-                    THREE.UniformsUtils.merge([
-
-                        THREE.UniformsLib.lights,
-
-                        TerrainShader.uniforms
-
-                    ]),
-
-                vertexShader:
-                    TerrainShader.vertexShader,
-
-                fragmentShader:
-                    TerrainShader.fragmentShader,
-
-                side:
-                    THREE.DoubleSide,
-
-                fog:
-                    true,
-
-                lights:
-                    true
-            });
-        // ==================================================
-        // TERRAIN
-        // ==================================================
-
-        // this.generateHillField();
-
-        // this.calculateFieldRange();
         this.generationVersion = 0;
+        this.readyNotified = false;
         this.disposed = false;
+
+        // ==================================================
+        // GENERATE (must be last)
+        // ==================================================
+
         if (this.terrainWorkerPool) {
             this.requestGeneration();
         } else {
             this.generate();
         }
-
-
-    }
-    // ==================================================
-    // SHADOW UNIFORMS
-    // ==================================================
-
-    updateShadowUniforms() {
-        // Shadows are now handled automatically by Three.js
-        // through the shadowmap shader chunks.
-    }
-    // ==================================================
-    // SEEDED RANDOM
-    // ==================================================
-
-    hash(value) {
-
-        const x =
-            Math.sin(
-                value * 127.1 +
-                this.seed * 74.7
-            ) *
-            43758.5453123;
-
-
-        return (
-            x -
-            Math.floor(x)
-        );
     }
 
 
     // ==================================================
-    // 2D SEEDED RANDOM
+    // SHADOW UNIFORMS (handled by three.js shadow chunks)
     // ==================================================
 
-    hash2D(x, z) {
-
-        const value =
-            Math.sin(
-                x * 127.1 +
-                z * 311.7 +
-                this.seed * 74.7
-            ) *
-            43758.5453123;
+    updateShadowUniforms() { }
 
 
-        return (
-            value -
-            Math.floor(value)
-        );
+    // ==================================================
+    // WORLD QUERIES
+    // ==================================================
+
+    getHeight(x, z) {
+        return this.worldGenerator.getHeight(x, z);
     }
 
-
-    // ==================================================
-    // SMOOTH
-    // ==================================================
-
-    smooth(t) {
-
-        return (
-            t *
-            t *
-            (3 - 2 * t)
-        );
+    getNormal(x, z) {
+        return this.worldGenerator.getNormal(x, z);
     }
 
-
-    // ==================================================
-    // VALUE NOISE
-    // ==================================================
-
-    valueNoise(x, z) {
-
-        const x0 =
-            Math.floor(x);
-
-        const z0 =
-            Math.floor(z);
-
-        const x1 =
-            x0 + 1;
-
-        const z1 =
-            z0 + 1;
-
-
-        const tx =
-            this.smooth(
-                x - x0
-            );
-
-        const tz =
-            this.smooth(
-                z - z0
-            );
-
-
-        const n00 =
-            this.hash2D(
-                x0,
-                z0
-            );
-
-        const n10 =
-            this.hash2D(
-                x1,
-                z0
-            );
-
-        const n01 =
-            this.hash2D(
-                x0,
-                z1
-            );
-
-        const n11 =
-            this.hash2D(
-                x1,
-                z1
-            );
-
-
-        const nx0 =
-            THREE.MathUtils.lerp(
-                n00,
-                n10,
-                tx
-            );
-
-        const nx1 =
-            THREE.MathUtils.lerp(
-                n01,
-                n11,
-                tx
-            );
-
-
-        return THREE.MathUtils.lerp(
-            nx0,
-            nx1,
-            tz
-        );
+    getSlope(x, z) {
+        return this.worldGenerator.getSlope(x, z);
     }
-
-
-    // ==================================================
-    // GAUSSIAN
-    // ==================================================
-
-    gaussian(
-        distance,
-        radius
-    ) {
-
-        const normalized =
-            distance /
-            radius;
-
-
-        return Math.exp(
-            -normalized *
-            normalized *
-            1.6
-        );
-    }
-
-
-    // ==================================================
-    // GENERATE WORLD-SPACE HILLS
-    // ==================================================
-
-    generateHillField() {
-
-        this.hills = [];
-
-
-        const regionSize = 100;
-
-
-        const currentRegionX =
-            Math.floor(
-                this.worldOffsetX /
-                regionSize
-            );
-
-        const currentRegionZ =
-            Math.floor(
-                this.worldOffsetZ /
-                regionSize
-            );
-
-
-        const regionRange = 2;
-
-
-        for (
-            let rz = -regionRange;
-            rz <= regionRange;
-            rz++
-        ) {
-
-            for (
-                let rx = -regionRange;
-                rx <= regionRange;
-                rx++
-            ) {
-
-                const regionX =
-                    currentRegionX + rx;
-
-                const regionZ =
-                    currentRegionZ + rz;
-
-
-                const randomX =
-                    this.hash2D(
-                        regionX * 13.17 + 17.31,
-                        regionZ * 19.73 + 1.7
-                    );
-
-
-                const randomZ =
-                    this.hash2D(
-                        regionX * 23.91 + 31.73,
-                        regionZ * 29.17 + 8.2
-                    );
-
-
-                const randomStrength =
-                    this.hash2D(
-                        regionX * 37.91 + 47.91,
-                        regionZ * 41.27 + 15.4
-                    );
-
-
-                const randomWidth =
-                    this.hash2D(
-                        regionX * 53.17 + 63.17,
-                        regionZ * 59.83 + 22.8
-                    );
-
-
-                const centerX =
-                    regionX *
-                    regionSize;
-
-
-                const centerZ =
-                    regionZ *
-                    regionSize;
-
-
-                const x =
-                    centerX +
-                    THREE.MathUtils.lerp(
-                        -regionSize * 0.42,
-                        regionSize * 0.42,
-                        randomX
-                    );
-
-
-                const z =
-                    centerZ +
-                    THREE.MathUtils.lerp(
-                        -regionSize * 0.42,
-                        regionSize * 0.42,
-                        randomZ
-                    );
-
-
-                const strength =
-                    THREE.MathUtils.lerp(
-                        0.35,
-                        1.0,
-                        randomStrength
-                    );
-
-
-                const radius =
-                    THREE.MathUtils.lerp(
-                        24.0,
-                        46.0,
-                        randomWidth
-                    );
-
-
-                this.hills.push({
-
-                    x,
-
-                    z,
-
-                    strength,
-
-                    radius
-
-                });
-            }
-        }
-    }
-
-
-    // ==================================================
-    // RAW TERRAIN FIELD
-    // ==================================================
-
-    getRawField(x, z) {
-
-        let poweredSum = 0;
-
-        const combinationPower = 4.0;
-
-
-        for (
-            const hill of this.hills
-        ) {
-
-            const dx =
-                x -
-                hill.x;
-
-            const dz =
-                z -
-                hill.z;
-
-
-            const distance =
-                Math.sqrt(
-                    dx * dx +
-                    dz * dz
-                );
-
-
-            if (
-                distance >
-                hill.radius * 2.5
-            ) {
-
-                continue;
-            }
-
-
-            const influence =
-                this.gaussian(
-                    distance,
-                    hill.radius
-                );
-
-
-            const contribution =
-                influence *
-                hill.strength;
-
-
-            poweredSum +=
-                Math.pow(
-                    contribution,
-                    combinationPower
-                );
-        }
-
-
-        let field =
-            Math.pow(
-                poweredSum,
-                1.0 /
-                combinationPower
-            );
-
-
-        const broadNoise =
-            this.valueNoise(
-                x * 0.012,
-                z * 0.012
-            );
-
-
-        field =
-            field * 0.94 +
-            broadNoise * 0.06;
-
-
-        return THREE.MathUtils.clamp(
-            field,
-            0.0,
-            1.0
-        );
-    }
-
-
-    // ==================================================
-    // FIELD RANGE
-    // ==================================================
-
-    calculateFieldRange() {
-
-        /*
-         * IMPORTANT:
-         *
-         * Do not calculate an independent range for
-         * every chunk.
-         *
-         * Every chunk uses the same world-space
-         * normalization.
-         */
-
-        this.fieldMin = 0.0;
-
-        this.fieldMax = 1.0;
-
-        this.fieldRange = 1.0;
-    }
-
-
-    // ==================================================
-    // TERRAIN HEIGHT
-    // ==================================================
-
-    // ==================================================
-    // TERRAIN HEIGHT
-    // ==================================================
-
-    getHeight(
-        x,
-        z
-    ) {
-
-        return this.worldGenerator.getHeight(
-            x,
-            z
-        );
-
-    }
-
-
-    // ==================================================
-    // TERRAIN NORMAL
-    // ==================================================
-
-    // ==================================================
-    // TERRAIN NORMAL
-    // ==================================================
-
-    getNormal(
-        x,
-        z
-    ) {
-
-        return this.worldGenerator.getNormal(
-            x,
-            z
-        );
-
-    }
-
-
-    // ==================================================
-    // TERRAIN SLOPE
-    // ==================================================
-
-    // ==================================================
-    // TERRAIN SLOPE
-    // ==================================================
-
-    getSlope(
-        x,
-        z
-    ) {
-
-        return this.worldGenerator.getSlope(
-            x,
-            z
-        );
-
-    }
-    // ==================================================
-    // TERRAIN SURFACE
-    // ==================================================
 
     getSurface(x, z) {
 
-        const terrainSample =
-            this.worldGenerator.getTerrainSample(
-                x,
-                z
-            );
-
-        const height =
-            terrainSample.height;
-
-        const normal =
-            terrainSample.normal;
-
-        const slope =
-            terrainSample.slope;
-
-        const slopeDegrees =
-            terrainSample.slopeDegrees;
-
+        const sample =
+            this.worldGenerator.getTerrainSample(x, z);
 
         return {
-
-            height,
-
-            normal,
-
-            slope,
-
-            slopeDegrees
-
+            height: sample.height,
+            normal: sample.normal,
+            slope: sample.slope,
+            slopeDegrees: sample.slopeDegrees
         };
     }
 
+
     // ==================================================
-    // TERRAIN HEIGHT GRID
+    // HEIGHT GRID
     // ==================================================
     //
-    // Creates the height data used by GrassWorker.
-    //
-    // The grid is LOCAL to this terrain chunk:
-    //
-    //     -size/2 ---------------- +size/2
-    //          terrain chunk
-    //
-    // This means the grass worker can use the same
-    // local coordinates as the terrain mesh.
+    // Always the full data grid (dataResolution), regardless of
+    // the current mesh LOD, so grass and other props keep
+    // consistent heights when the terrain LOD changes.
     //
 
     getHeightGrid() {
-
         return this.terrainGrid;
-
     }
+
+
     // ==================================================
-    // REQUEST TERRAIN GENERATION
+    // REQUEST GENERATION (worker)
     // ==================================================
 
     requestGeneration() {
 
-        if (!this.terrainWorkerPool) {
-            this.generate();
-            return;
-        }
-
-        const generationVersion =
-            ++this.generationVersion;
+        const version = ++this.generationVersion;
 
         this.terrainWorkerPool
             .generate({
 
-                key:
-                    `${this.worldOffsetX},${this.worldOffsetZ}`,
+                key: `${this.worldOffsetX},${this.worldOffsetZ}`,
 
-                size:
-                    this.size,
+                size: this.size,
 
-                resolution:
-                    this.resolution,
+                resolution: this.dataResolution,
 
-                worldOffsetX:
-                    this.worldOffsetX,
+                worldOffsetX: this.worldOffsetX,
+                worldOffsetZ: this.worldOffsetZ,
 
-                worldOffsetZ:
-                    this.worldOffsetZ,
+                seed: this.seed,
 
-                seed:
-                    this.seed,
-
-                baseHeight:
-                    this.baseHeight,
-
-                maxHeight:
-                    this.maxHeight,
-
-                heightScale:
-                    this.heightScale
-
+                baseHeight: this.baseHeight,
+                maxHeight: this.maxHeight,
+                heightScale: this.heightScale
             })
             .then((data) => {
 
                 if (
                     this.disposed ||
-                    generationVersion !== this.generationVersion ||
-                    data.resolution - 1 !== this.resolution
+                    version !== this.generationVersion
                 ) {
                     return;
                 }
 
-                this.applyGeneratedTerrain(data);
-
+                this.applyGeneratedTerrain(data, false);
             })
             .catch((error) => {
-
-                console.error(
-                    "Terrain generation failed:",
-                    error
-                );
-
+                console.error("Terrain generation failed:", error);
             });
     }
-    applyGeneratedTerrain(data) {
-        if (this.mesh) {
-            this.scene.remove(this.mesh);
-            this.mesh = null;
-        }
-
-        if (this.geometry) {
-            this.geometry.dispose();
-            this.geometry = null;
-        }
-
-        // REMOVE OLD SKIRT
-        if (this.skirtMesh) {
-            this.scene.remove(
-                this.skirtMesh
-            );
-
-            this.skirtMesh = null;
-        }
-
-        if (this.skirtGeometry) {
-            this.skirtGeometry.dispose();
-
-            this.skirtGeometry = null;
-        }
-        console.log(
-            "TerrainSystem received worker terrain:",
-            data.resolution,
-            data.size
-        );
-
-        // --------------------------------------------------
-        // MAIN TERRAIN GEOMETRY
-        // --------------------------------------------------
-
-        const resolution = data.resolution - 1;
-
-        this.geometry = new THREE.PlaneGeometry(
-            data.size,
-            data.size,
-            resolution,
-            resolution
-        );
-
-        this.geometry.rotateX(-Math.PI / 2);
 
 
-        // --------------------------------------------------
-        // APPLY WORKER HEIGHT DATA
-        // --------------------------------------------------
-
-        const position =
-            this.geometry.attributes.position;
-
-        for (let i = 0; i < position.count; i++) {
-
-            position.setY(
-                i,
-                data.heightData[i]
-            );
-
-        }
-
-        position.needsUpdate = true;
-
-
-        // --------------------------------------------------
-        // CACHE TERRAIN DATA
-        // --------------------------------------------------
-
-        this.terrainGrid = {
-
-            data:
-                data.heightData,
-
-            normalData:
-                data.normalData,
-
-            grassWeightData:
-                data.grassWeightData,
-
-            dirtWeightData:
-                data.dirtWeightData,
-
-            gravelWeightData:
-                data.gravelWeightData,
-
-            rockWeightData:
-                data.rockWeightData,
-
-            resolution:
-                data.resolution,
-
-            size:
-                data.size
-
-        };
-
-
-        // --------------------------------------------------
-        // DEBUG COLOR ATTRIBUTE
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-            "color",
-            new THREE.Float32BufferAttribute(
-                data.colors,
-                3
-            )
-        );
-
-
-        // --------------------------------------------------
-        // SURFACE WEIGHTS ATTRIBUTE
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-            "surfaceWeights",
-            new THREE.Float32BufferAttribute(
-                data.surfaceWeights,
-                4
-            )
-        );
-
-
-        // --------------------------------------------------
-        // WORLD-SPACE NORMALS
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-            "normal",
-            new THREE.BufferAttribute(
-                data.normalData,
-                3
-            )
-        );
-
-
-        // --------------------------------------------------
-        // MAIN MESH
-        // --------------------------------------------------
-
-        this.mesh =
-            new THREE.Mesh(
-                this.geometry,
-                this.material
-            );
-
-        this.mesh.position.set(
-            this.worldOffsetX,
-            0,
-            this.worldOffsetZ
-        );
-
-        this.mesh.name =
-            `TerrainChunk_${this.worldOffsetX}_${this.worldOffsetZ}`;
-
-        this.mesh.receiveShadow = true;
-
-        this.mesh.castShadow = false;
-
-        this.scene.add(
-            this.mesh
-        );
-
-
-        // --------------------------------------------------
-        // LOD SKIRT
-        // --------------------------------------------------
-
-        this.generateSkirt();
-
-
-        // --------------------------------------------------
-        // TERRAIN IS NOW READY
-        // --------------------------------------------------
-
-        this.onTerrainReady?.(this);
-
-    }
     // ==================================================
-    // GENERATE
+    // GENERATE (main-thread fallback)
     // ==================================================
+    //
+    // Produces data in the same format as the worker and goes
+    // through the same code path as worker results.
+    //
 
     generate() {
 
-        // --------------------------------------------------
-        // MAIN TERRAIN GEOMETRY
-        // --------------------------------------------------
-
-        this.geometry =
-            new THREE.PlaneGeometry(
-
-                this.size,
-
-                this.size,
-
-                this.resolution,
-
-                this.resolution
-
-            );
-
-
-        this.geometry.rotateX(
-            -Math.PI / 2
-        );
-
-
-        // --------------------------------------------------
-        // TERRAIN DATA
-        // --------------------------------------------------
-
-        const position =
-            this.geometry.attributes.position;
-
-
-        const gridResolution =
-            this.resolution + 1;
-
-
-        const total =
-            gridResolution *
-            gridResolution;
-
-
-        const heightData =
-            new Float32Array(
-                total
-            );
-
-
-        const grassWeightData =
-            new Float32Array(
-                total
-            );
-
-
-        const dirtWeightData =
-            new Float32Array(
-                total
-            );
-
-
-        const gravelWeightData =
-            new Float32Array(
-                total
-            );
-
-
-        const rockWeightData =
-            new Float32Array(
-                total
-            );
-
-
-        const normalData =
-            new Float32Array(
-                total * 3
-            );
-
-
-        const colors =
-            new Float32Array(
-                total * 3
-            );
-
-
-        const surfaceWeights =
-            new Float32Array(
-                total * 4
-            );
-
-
-        // --------------------------------------------------
-        // HEIGHT + SURFACE + NORMAL
-        // --------------------------------------------------
-
-        for (
-            let i = 0;
-            i < position.count;
-            i++
-        ) {
-
-            const localX =
-                position.getX(i);
-
-
-            const localZ =
-                position.getZ(i);
-
-
-            const worldX =
-                localX +
-                this.worldOffsetX;
-
-
-            const worldZ =
-                localZ +
-                this.worldOffsetZ;
-
-
-            // --------------------------------------------------
-            // TERRAIN SAMPLE
-            // --------------------------------------------------
-
-            const terrainSample =
-                this.worldGenerator.getTerrainSample(
-                    worldX,
-                    worldZ
-                );
-
-
-            // --------------------------------------------------
-            // HEIGHT
-            // --------------------------------------------------
-
-            position.setY(
-                i,
-                terrainSample.height
-            );
-
-
-            heightData[i] =
-                terrainSample.height;
-
-
-            // --------------------------------------------------
-            // NORMAL
-            // --------------------------------------------------
-
-            normalData[
-                i * 3
-            ] =
-                terrainSample.normal.x;
-
-
-            normalData[
-                i * 3 + 1
-            ] =
-                terrainSample.normal.y;
-
-
-            normalData[
-                i * 3 + 2
-            ] =
-                terrainSample.normal.z;
-
-
-            // --------------------------------------------------
-            // SURFACE NOISE
-            // --------------------------------------------------
-
-            const surfaceNoise =
-                this.surfaceSystem.getSurfaceNoise(
-                    worldX,
-                    worldZ
-                );
-
-
-            // --------------------------------------------------
-            // SURFACE WEIGHTS
-            // --------------------------------------------------
-
-            const weights =
-                this.surfaceSystem.getSurfaceWeights(
-                    worldX,
-                    worldZ,
-                    this,
-                    terrainSample,
-                    surfaceNoise
-                );
-
-
-            // --------------------------------------------------
-            // SURFACE COLOR
-            // --------------------------------------------------
-
-            const surfaceColor =
-                this.surfaceSystem.getSurfaceColor(
-                    worldX,
-                    worldZ,
-                    this,
-                    terrainSample,
-                    weights,
-                    surfaceNoise
-                );
-
-
-            colors[
-                i * 3
-            ] =
-                surfaceColor.r;
-
-
-            colors[
-                i * 3 + 1
-            ] =
-                surfaceColor.g;
-
-
-            colors[
-                i * 3 + 2
-            ] =
-                surfaceColor.b;
-
-
-            // --------------------------------------------------
-            // SURFACE WEIGHT DATA
-            // --------------------------------------------------
-
-            grassWeightData[i] =
-                weights.grass;
-
-
-            dirtWeightData[i] =
-                weights.dirt;
-
-
-            gravelWeightData[i] =
-                weights.gravel;
-
-
-            rockWeightData[i] =
-                weights.rock;
-
-
-            // --------------------------------------------------
-            // MESH SURFACE WEIGHTS
-            // --------------------------------------------------
-
-            surfaceWeights[
-                i * 4
-            ] =
-                weights.grass;
-
-
-            surfaceWeights[
-                i * 4 + 1
-            ] =
-                weights.dirt;
-
-
-            surfaceWeights[
-                i * 4 + 2
-            ] =
-                weights.gravel;
-
-
-            surfaceWeights[
-                i * 4 + 3
-            ] =
-                weights.rock;
-
+        const segments = this.dataResolution;
+        const n = segments + 1;
+        const total = n * n;
+
+        const half = this.size * 0.5;
+        const step = this.size / segments;
+
+        const heightData = new Float32Array(total);
+        const normalData = new Float32Array(total * 3);
+
+        const grassWeightData = new Float32Array(total);
+        const dirtWeightData = new Float32Array(total);
+        const gravelWeightData = new Float32Array(total);
+        const rockWeightData = new Float32Array(total);
+
+        const colors = new Float32Array(total * 3);
+        const surfaceWeights = new Float32Array(total * 4);
+
+        for (let iz = 0; iz < n; iz++) {
+            for (let ix = 0; ix < n; ix++) {
+
+                const i = iz * n + ix;
+
+                const worldX = ix * step - half + this.worldOffsetX;
+                const worldZ = iz * step - half + this.worldOffsetZ;
+
+                const sample =
+                    this.worldGenerator.getTerrainSample(
+                        worldX,
+                        worldZ
+                    );
+
+                heightData[i] = sample.height;
+
+                normalData[i * 3] = sample.normal.x;
+                normalData[i * 3 + 1] = sample.normal.y;
+                normalData[i * 3 + 2] = sample.normal.z;
+
+                const noise =
+                    this.surfaceSystem.getSurfaceNoise(
+                        worldX,
+                        worldZ
+                    );
+
+                const weights =
+                    this.surfaceSystem.getSurfaceWeights(
+                        worldX,
+                        worldZ,
+                        this,
+                        sample,
+                        noise
+                    );
+
+                const color =
+                    this.surfaceSystem.getSurfaceColor(
+                        worldX,
+                        worldZ,
+                        this,
+                        sample,
+                        weights,
+                        noise
+                    );
+
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+
+                grassWeightData[i] = weights.grass;
+                dirtWeightData[i] = weights.dirt;
+                gravelWeightData[i] = weights.gravel;
+                rockWeightData[i] = weights.rock;
+
+                surfaceWeights[i * 4] = weights.grass;
+                surfaceWeights[i * 4 + 1] = weights.dirt;
+                surfaceWeights[i * 4 + 2] = weights.gravel;
+                surfaceWeights[i * 4 + 3] = weights.rock;
+            }
         }
 
+        this.applyGeneratedTerrain(
+            {
+                heightData,
+                normalData,
+                grassWeightData,
+                dirtWeightData,
+                gravelWeightData,
+                rockWeightData,
+                colors,
+                surfaceWeights,
+                resolution: n,
+                size: this.size
+            },
+            true
+        );
+    }
 
-        position.needsUpdate =
-            true;
 
+    // ==================================================
+    // APPLY GENERATED DATA
+    // ==================================================
 
-        // --------------------------------------------------
-        // CACHE TERRAIN DATA
-        // --------------------------------------------------
+    applyGeneratedTerrain(data, isSync) {
+
+        if (this.disposed) {
+            return;
+        }
 
         this.terrainGrid = {
 
-            data:
-                heightData,
+            data: data.heightData,
+            normalData: data.normalData,
 
-            normalData:
-                normalData,
+            grassWeightData: data.grassWeightData,
+            dirtWeightData: data.dirtWeightData,
+            gravelWeightData: data.gravelWeightData,
+            rockWeightData: data.rockWeightData,
 
+            colorData: data.colors,
+            surfaceWeightData: data.surfaceWeights,
 
-            grassWeightData:
-                grassWeightData,
+            // number of vertices per side (segments + 1)
+            resolution: data.resolution,
 
-            dirtWeightData:
-                dirtWeightData,
-
-            gravelWeightData:
-                gravelWeightData,
-
-            rockWeightData:
-                rockWeightData,
-
-            resolution:
-                gridResolution,
-
-            size:
-                this.size
-
+            size: data.size
         };
 
+        this.buildMesh();
 
-        // --------------------------------------------------
-        // DEBUG COLOR ATTRIBUTE
-        // --------------------------------------------------
+        // Only the first generation announces readiness. LOD
+        // changes reuse the data and don't re-register vegetation.
+        if (this.readyNotified) {
+            return;
+        }
 
-        this.geometry.setAttribute(
+        this.readyNotified = true;
 
-            "color",
+        if (isSync) {
 
-            new THREE.Float32BufferAttribute(
+            // The caller hasn't stored this terrain yet
+            queueMicrotask(() => {
+                if (!this.disposed) {
+                    this.onTerrainReady?.(this);
+                }
+            });
 
-                colors,
+        } else {
 
-                3
-
-            )
-
-        );
-
-
-        // --------------------------------------------------
-        // SURFACE WEIGHTS ATTRIBUTE
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-
-            "surfaceWeights",
-
-            new THREE.Float32BufferAttribute(
-
-                surfaceWeights,
-
-                4
-
-            )
-
-        );
-
-
-        // --------------------------------------------------
-        // WORLD-SPACE NORMALS
-        // --------------------------------------------------
-
-        this.geometry.setAttribute(
-
-            "normal",
-
-            new THREE.BufferAttribute(
-
-                normalData,
-
-                3
-
-            )
-
-        );
-
-
-        // --------------------------------------------------
-        // MAIN MESH
-        // --------------------------------------------------
-
-        this.mesh =
-            new THREE.Mesh(
-
-                this.geometry,
-
-                this.material
-
-            );
-
-
-        this.mesh.position.set(
-
-            this.worldOffsetX,
-
-            0,
-
-            this.worldOffsetZ
-
-        );
-
-
-        this.mesh.name =
-            `TerrainChunk_${this.worldOffsetX}_${this.worldOffsetZ}`;
-
-
-        this.mesh.receiveShadow =
-            true;
-
-
-        this.mesh.castShadow =
-            false;
-
-
-        this.scene.add(
-            this.mesh
-        );
-
-
-        // --------------------------------------------------
-        // LOD SKIRT
-        // --------------------------------------------------
-
-        this.generateSkirt();
-
+            this.onTerrainReady?.(this);
+        }
     }
+
+
     // ==================================================
-    // GENERATE LOD SKIRT
+    // BUILD MESH FROM DATA GRID (cheap, used for every LOD)
     // ==================================================
 
-    generateSkirt() {
+    buildMesh() {
 
-        /*
-         * The skirt extends downward from the chunk
-         * boundary.
-         *
-         * It is intentionally small.
-         */
+        const grid = this.terrainGrid;
 
-        const skirtDepth = 1.0;
+        if (!grid) {
+            return;
+        }
 
+        const dataVerts = grid.resolution;
+        const dataSegments = dataVerts - 1;
 
-        const halfSize =
-            this.size * 0.5;
-
-
-        const segments =
-            this.resolution;
-
-
-        const vertices = [];
-
-        const normals = [];
-
-        const indices = [];
-
-
-        // ==================================================
-        // EDGE BUILDER
-        // ==================================================
-
-        const addEdge =
-            (
-                startX,
-                startZ,
-                endX,
-                endZ
-            ) => {
-
-                const startIndex =
-                    vertices.length / 3;
-
-
-                for (
-                    let i = 0;
-                    i <= segments;
-                    i++
-                ) {
-
-                    const t =
-                        i /
-                        segments;
-
-
-                    const localX =
-                        THREE.MathUtils.lerp(
-                            startX,
-                            endX,
-                            t
-                        );
-
-
-                    const localZ =
-                        THREE.MathUtils.lerp(
-                            startZ,
-                            endZ,
-                            t
-                        );
-
-
-                    const worldX =
-                        localX +
-                        this.worldOffsetX;
-
-
-                    const worldZ =
-                        localZ +
-                        this.worldOffsetZ;
-
-
-                    const gridResolution =
-                        this.terrainGrid.resolution;
-
-                    let gridX;
-                    let gridZ;
-
-                    if (startZ === -halfSize && endZ === -halfSize) {
-                        // NORTH
-                        gridX = i;
-                        gridZ = 0;
-
-                    } else if (startX === halfSize && endX === halfSize) {
-                        // EAST
-                        gridX = gridResolution - 1;
-                        gridZ = i;
-
-                    } else if (startZ === halfSize && endZ === halfSize) {
-                        // SOUTH
-                        gridX = gridResolution - 1 - i;
-                        gridZ = gridResolution - 1;
-
-                    } else {
-                        // WEST
-                        gridX = 0;
-                        gridZ = gridResolution - 1 - i;
-                    }
-
-                    const gridIndex =
-                        gridZ * gridResolution + gridX;
-
-                    const y =
-                        this.terrainGrid.data[gridIndex];
-
-                    const normalIndex =
-                        gridIndex * 3;
-
-                    const normal = {
-                        x: this.terrainGrid.normalData[normalIndex],
-                        y: this.terrainGrid.normalData[normalIndex + 1],
-                        z: this.terrainGrid.normalData[normalIndex + 2]
-                    };
-
-
-                    // TOP
-                    vertices.push(
-                        localX,
-                        y,
-                        localZ
-                    );
-
-
-                    normals.push(
-                        normal.x,
-                        normal.y,
-                        normal.z
-                    );
-
-
-                    // BOTTOM
-                    vertices.push(
-                        localX,
-                        y - skirtDepth,
-                        localZ
-                    );
-
-
-                    normals.push(
-                        normal.x,
-                        normal.y,
-                        normal.z
-                    );
-                }
-
-
-                for (
-                    let i = 0;
-                    i < segments;
-                    i++
-                ) {
-
-                    const topA =
-                        startIndex +
-                        i * 2;
-
-                    const bottomA =
-                        topA + 1;
-
-                    const topB =
-                        startIndex +
-                        (i + 1) * 2;
-
-                    const bottomB =
-                        topB + 1;
-
-
-                    /*
-                     * Two triangles.
-                     */
-
-                    indices.push(
-
-                        topA,
-                        bottomA,
-                        topB,
-
-                        topB,
-                        bottomA,
-                        bottomB
-
-                    );
-                }
-            };
-
-
-        // ==================================================
-        // NORTH
-        // ==================================================
-
-        addEdge(
-
-            -halfSize,
-
-            -halfSize,
-
-            halfSize,
-
-            -halfSize
-
+        // Nearest stride that divides the data grid evenly, so
+        // the mesh always covers the whole chunk.
+        let stride = Math.max(
+            1,
+            Math.round(dataSegments / this.resolution)
         );
 
+        while (dataSegments % stride !== 0) {
+            stride++;
+        }
 
-        // ==================================================
-        // EAST
-        // ==================================================
+        const segments = dataSegments / stride;
+        const n = segments + 1;
+        const count = n * n;
 
-        addEdge(
+        const half = this.size * 0.5;
+        const step = this.size / segments;
 
-            halfSize,
+        const positions = new Float32Array(count * 3);
+        const normals = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const weights = new Float32Array(count * 4);
 
-            -halfSize,
+        for (let iz = 0; iz < n; iz++) {
+            for (let ix = 0; ix < n; ix++) {
 
-            halfSize,
+                const i = iz * n + ix;
+                const s = (iz * stride) * dataVerts + ix * stride;
 
-            halfSize
+                const p = i * 3;
+                const sp = s * 3;
 
-        );
+                positions[p] = ix * step - half;
+                positions[p + 1] = grid.data[s];
+                positions[p + 2] = iz * step - half;
 
+                normals[p] = grid.normalData[sp];
+                normals[p + 1] = grid.normalData[sp + 1];
+                normals[p + 2] = grid.normalData[sp + 2];
 
-        // ==================================================
-        // SOUTH
-        // ==================================================
+                colors[p] = grid.colorData[sp];
+                colors[p + 1] = grid.colorData[sp + 1];
+                colors[p + 2] = grid.colorData[sp + 2];
 
-        addEdge(
+                const w = i * 4;
+                const sw = s * 4;
 
-            halfSize,
+                weights[w] = grid.surfaceWeightData[sw];
+                weights[w + 1] = grid.surfaceWeightData[sw + 1];
+                weights[w + 2] = grid.surfaceWeightData[sw + 2];
+                weights[w + 3] = grid.surfaceWeightData[sw + 3];
+            }
+        }
 
-            halfSize,
+        const template = getGridTemplate(segments);
 
-            -halfSize,
+        const geometry = new THREE.BufferGeometry();
 
-            halfSize
-
-        );
-
-
-        // ==================================================
-        // WEST
-        // ==================================================
-
-        addEdge(
-
-            -halfSize,
-
-            halfSize,
-
-            -halfSize,
-
-            -halfSize
-
-        );
-
-
-        // ==================================================
-        // CREATE GEOMETRY
-        // ==================================================
-
-        this.skirtGeometry =
-            new THREE.BufferGeometry();
-
-
-        this.skirtGeometry.setAttribute(
-
+        geometry.setAttribute(
             "position",
-
-            new THREE.Float32BufferAttribute(
-
-                vertices,
-
-                3
-
-            )
-
+            new THREE.BufferAttribute(positions, 3)
         );
 
-
-        this.skirtGeometry.setAttribute(
-
+        geometry.setAttribute(
             "normal",
-
-            new THREE.Float32BufferAttribute(
-
-                normals,
-
-                3
-
-            )
-
+            new THREE.BufferAttribute(normals, 3)
         );
 
-
-        this.skirtGeometry.setIndex(
-            indices
+        geometry.setAttribute(
+            "uv",
+            new THREE.BufferAttribute(template.uvs, 2)
         );
 
+        geometry.setAttribute(
+            "color",
+            new THREE.BufferAttribute(colors, 3)
+        );
 
-        // --------------------------------------------------
-        // SKIRT MESH
-        // --------------------------------------------------
+        geometry.setAttribute(
+            "surfaceWeights",
+            new THREE.BufferAttribute(weights, 4)
+        );
 
-        this.skirtMesh =
-            new THREE.Mesh(
+        geometry.setIndex(
+            new THREE.BufferAttribute(template.indices, 1)
+        );
 
-                this.skirtGeometry,
+        const oldGeometry = this.geometry;
 
-                this.material
+        this.geometry = geometry;
 
+        if (!this.mesh) {
+
+            this.mesh = new THREE.Mesh(geometry, this.material);
+
+            this.mesh.position.set(
+                this.worldOffsetX,
+                0,
+                this.worldOffsetZ
             );
 
+            this.mesh.name =
+                `TerrainChunk_${this.worldOffsetX}_${this.worldOffsetZ}`;
 
-        this.skirtMesh.position.set(
+            this.mesh.receiveShadow = true;
+            this.mesh.castShadow = false;
 
-            this.worldOffsetX,
+            // Static: no per-frame matrix recompute
+            this.mesh.matrixAutoUpdate = false;
+            this.mesh.updateMatrix();
 
-            0,
+            this.scene.add(this.mesh);
 
-            this.worldOffsetZ
+        } else {
 
-        );
+            this.mesh.geometry = geometry;
+        }
 
+        if (oldGeometry) {
+            oldGeometry.dispose();
+        }
 
-        this.skirtMesh.name =
-            `TerrainSkirt_${this.worldOffsetX}_${this.worldOffsetZ}`;
-
-
-        this.skirtMesh.receiveShadow =
-            true;
-
-
-        this.skirtMesh.castShadow =
-            false;
-
-
-        this.scene.add(
-            this.skirtMesh
-        );
+        this.buildSkirt(positions, normals, segments);
     }
 
 
     // ==================================================
-    // CHANGE RESOLUTION
+    // SKIRT (hides cracks between LOD levels)
     // ==================================================
 
-setResolution(resolution) {
+    buildSkirt(positions, normals, segments) {
 
-    if (this.resolution === resolution) {
-        return;
-    }
+        const n = segments + 1;
 
-    this.resolution = resolution;
+        // Grid index of the i-th vertex along each edge,
+        // in the same order as the original implementation.
+        const edgeIndex = (edge, i) => {
 
-    this.requestGeneration();
-    this.updateShadowUniforms();
-}
-    // ==================================================
-    // DISPLACEMENT MAP
-    // ==================================================
+            switch (edge) {
 
-    generateDisplacementMap(
-        resolution = 512
-    ) {
+                case 0: return i;                          // north
+                case 1: return i * n + (n - 1);            // east
+                case 2: return (n - 1) * n + (n - 1 - i);  // south
+                default: return (n - 1 - i) * n;           // west
+            }
+        };
 
-        const canvas =
-            document.createElement("canvas");
+        const verticesPerEdge = (segments + 1) * 2;
+        const vertexTotal = verticesPerEdge * 4;
 
-        canvas.width =
-            resolution;
+        const skirtPositions = new Float32Array(vertexTotal * 3);
+        const skirtNormals = new Float32Array(vertexTotal * 3);
 
-        canvas.height =
-            resolution;
+        const IndexArray = vertexTotal > 65535 ? Uint32Array : Uint16Array;
 
-        const ctx =
-            canvas.getContext("2d");
+        const indices = new IndexArray(segments * 4 * 6);
 
-        const image =
-            ctx.createImageData(
-                resolution,
-                resolution
-            );
+        let v = 0;
+        let k = 0;
 
-        const data =
-            image.data;
+        for (let edge = 0; edge < 4; edge++) {
 
-        const range =
-            this.maxHeight -
-            this.baseHeight;
+            const start = v;
 
+            for (let i = 0; i <= segments; i++) {
 
-        for (
-            let py = 0;
-            py < resolution;
-            py++
-        ) {
+                const p = edgeIndex(edge, i) * 3;
 
-            const v =
-                py /
-                (resolution - 1);
+                // top
+                let o = v * 3;
 
-            const worldZ =
-                this.worldOffsetZ +
-                (
-                    v -
-                    0.5
-                ) *
-                this.size;
+                skirtPositions[o] = positions[p];
+                skirtPositions[o + 1] = positions[p + 1];
+                skirtPositions[o + 2] = positions[p + 2];
 
+                skirtNormals[o] = normals[p];
+                skirtNormals[o + 1] = normals[p + 1];
+                skirtNormals[o + 2] = normals[p + 2];
 
-            for (
-                let px = 0;
-                px < resolution;
-                px++
-            ) {
+                v++;
 
-                const u =
-                    px /
-                    (resolution - 1);
+                // bottom
+                o = v * 3;
 
-                const worldX =
-                    this.worldOffsetX +
-                    (
-                        u -
-                        0.5
-                    ) *
-                    this.size;
+                skirtPositions[o] = positions[p];
+                skirtPositions[o + 1] = positions[p + 1] - SKIRT_DEPTH;
+                skirtPositions[o + 2] = positions[p + 2];
 
+                skirtNormals[o] = normals[p];
+                skirtNormals[o + 1] = normals[p + 1];
+                skirtNormals[o + 2] = normals[p + 2];
 
-                const height =
-                    this.getHeight(
-                        worldX,
-                        worldZ
-                    );
+                v++;
+            }
 
+            for (let i = 0; i < segments; i++) {
 
-                const normalized =
-                    THREE.MathUtils.clamp(
-                        (
-                            height -
-                            this.baseHeight
-                        ) /
-                        Math.max(
-                            range,
-                            0.000001
-                        ),
-                        0,
-                        1
-                    );
+                const topA = start + i * 2;
+                const bottomA = topA + 1;
+                const topB = start + (i + 1) * 2;
+                const bottomB = topB + 1;
 
+                indices[k++] = topA;
+                indices[k++] = bottomA;
+                indices[k++] = topB;
 
-                const value =
-                    Math.round(
-                        normalized *
-                        255
-                    );
-
-
-                const index =
-                    (
-                        py *
-                        resolution +
-                        px
-                    ) *
-                    4;
-
-
-                data[index] =
-                    value;
-
-                data[index + 1] =
-                    value;
-
-                data[index + 2] =
-                    value;
-
-                data[index + 3] =
-                    255;
+                indices[k++] = topB;
+                indices[k++] = bottomA;
+                indices[k++] = bottomB;
             }
         }
 
+        const geometry = new THREE.BufferGeometry();
 
-        ctx.putImageData(
-            image,
-            0,
-            0
+        geometry.setAttribute(
+            "position",
+            new THREE.BufferAttribute(skirtPositions, 3)
         );
 
+        geometry.setAttribute(
+            "normal",
+            new THREE.BufferAttribute(skirtNormals, 3)
+        );
+
+        geometry.setIndex(
+            new THREE.BufferAttribute(indices, 1)
+        );
+
+        const oldGeometry = this.skirtGeometry;
+
+        this.skirtGeometry = geometry;
+
+        if (!this.skirtMesh) {
+
+            this.skirtMesh = new THREE.Mesh(geometry, this.material);
+
+            this.skirtMesh.position.set(
+                this.worldOffsetX,
+                0,
+                this.worldOffsetZ
+            );
+
+            this.skirtMesh.name =
+                `TerrainSkirt_${this.worldOffsetX}_${this.worldOffsetZ}`;
+
+            this.skirtMesh.receiveShadow = true;
+            this.skirtMesh.castShadow = false;
+
+            this.skirtMesh.matrixAutoUpdate = false;
+            this.skirtMesh.updateMatrix();
+
+            this.scene.add(this.skirtMesh);
+
+        } else {
+
+            this.skirtMesh.geometry = geometry;
+        }
+
+        if (oldGeometry) {
+            oldGeometry.dispose();
+        }
+    }
+
+
+    // ==================================================
+    // CHANGE RESOLUTION (LOD)
+    // ==================================================
+    //
+    // No worker call and no noise: just resample the data grid.
+    //
+
+    setResolution(resolution) {
+
+        if (this.resolution === resolution) {
+            return;
+        }
+
+        this.resolution = resolution;
+
+        if (this.terrainGrid) {
+            this.buildMesh();
+        }
+    }
+
+
+    // ==================================================
+    // DEBUG MAPS
+    // ==================================================
+
+    renderMap(resolution, getColor) {
+
+        const canvas = document.createElement("canvas");
+
+        canvas.width = resolution;
+        canvas.height = resolution;
+
+        const ctx = canvas.getContext("2d");
+        const image = ctx.createImageData(resolution, resolution);
+        const pixels = image.data;
+
+        const color = [0, 0, 0];
+
+        for (let py = 0; py < resolution; py++) {
+
+            const worldZ =
+                this.worldOffsetZ +
+                (py / (resolution - 1) - 0.5) * this.size;
+
+            for (let px = 0; px < resolution; px++) {
+
+                const worldX =
+                    this.worldOffsetX +
+                    (px / (resolution - 1) - 0.5) * this.size;
+
+                color[0] = 0;
+                color[1] = 0;
+                color[2] = 0;
+
+                getColor(worldX, worldZ, color);
+
+                const index = (py * resolution + px) * 4;
+
+                pixels[index] = color[0];
+                pixels[index + 1] = color[1];
+                pixels[index + 2] = color[2];
+                pixels[index + 3] = 255;
+            }
+        }
+
+        ctx.putImageData(image, 0, 0);
 
         return canvas;
     }
 
 
-    // ==================================================
-    // SURFACE MAP
-    // ==================================================
+    generateDisplacementMap(resolution = 512) {
 
-    generateSurfaceMap(
-        resolution = 512
-    ) {
-
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width =
-            resolution;
-
-        canvas.height =
-            resolution;
-
-        const ctx =
-            canvas.getContext("2d");
-
-        const image =
-            ctx.createImageData(
-                resolution,
-                resolution
-            );
-
-        const data =
-            image.data;
-
-
-        for (
-            let py = 0;
-            py < resolution;
-            py++
-        ) {
-
-            const v =
-                py /
-                (resolution - 1);
-
-            const worldZ =
-                this.worldOffsetZ +
-                (
-                    v -
-                    0.5
-                ) *
-                this.size;
-
-
-            for (
-                let px = 0;
-                px < resolution;
-                px++
-            ) {
-
-                const u =
-                    px /
-                    (resolution - 1);
-
-                const worldX =
-                    this.worldOffsetX +
-                    (
-                        u -
-                        0.5
-                    ) *
-                    this.size;
-
-
-                const surface =
-                    this.surfaceSystem.getSurface(
-                        worldX,
-                        worldZ,
-                        this
-                    );
-
-
-                let r = 0;
-                let g = 0;
-                let b = 0;
-
-
-                switch (
-                surface.type
-                ) {
-
-                    case this.surfaceSystem.SURFACE.GRASS:
-
-                        r = 70;
-                        g = 170;
-                        b = 50;
-
-                        break;
-
-
-                    case this.surfaceSystem.SURFACE.DIRT:
-
-                        r = 190;
-                        g = 155;
-                        b = 95;
-
-                        break;
-
-
-                    case this.surfaceSystem.SURFACE.GRAVEL:
-
-                        r = 145;
-                        g = 140;
-                        b = 125;
-
-                        break;
-
-
-                    case this.surfaceSystem.SURFACE.ROCK:
-
-                        r = 75;
-                        g = 78;
-                        b = 80;
-
-                        break;
-                }
-
-
-                const index =
-                    (
-                        py *
-                        resolution +
-                        px
-                    ) *
-                    4;
-
-
-                data[index] =
-                    r;
-
-                data[index + 1] =
-                    g;
-
-                data[index + 2] =
-                    b;
-
-                data[index + 3] =
-                    255;
-            }
-        }
-
-
-        ctx.putImageData(
-            image,
-            0,
-            0
+        const range = Math.max(
+            this.maxHeight - this.baseHeight,
+            0.000001
         );
 
+        return this.renderMap(resolution, (x, z, color) => {
 
-        return canvas;
-    }
-    // ==================================================
-    // GENERATE DISPLACEMENT MAP
-    // ==================================================
-    // ==================================================
-    // PROP DISTRIBUTION MAP
-    // ==================================================
-
-    generatePropDistributionMap(
-        type = "grass",
-        resolution = 512
-    ) {
-
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width =
-            resolution;
-
-        canvas.height =
-            resolution;
-
-        const ctx =
-            canvas.getContext("2d");
-
-        const image =
-            ctx.createImageData(
-                resolution,
-                resolution
+            const normalized = THREE.MathUtils.clamp(
+                (this.getHeight(x, z) - this.baseHeight) / range,
+                0,
+                1
             );
 
-        const data =
-            image.data;
-
-
-        for (
-            let py = 0;
-            py < resolution;
-            py++
-        ) {
-
-            const v =
-                py /
-                (resolution - 1);
-
-            const worldZ =
-                this.worldOffsetZ +
-                (v - 0.5) *
-                this.size;
-
-
-            for (
-                let px = 0;
-                px < resolution;
-                px++
-            ) {
-
-                const u =
-                    px /
-                    (resolution - 1);
-
-                const worldX =
-                    this.worldOffsetX +
-                    (u - 0.5) *
-                    this.size;
-
-
-                const density =
-                    this.propDistributionSystem.getDensity(
-                        type,
-                        worldX,
-                        worldZ
-                    );
-
-
-                const value =
-                    Math.round(
-                        THREE.MathUtils.clamp(
-                            density,
-                            0,
-                            1
-                        ) * 255
-                    );
-
-
-                const index =
-                    (
-                        py *
-                        resolution +
-                        px
-                    ) * 4;
-
-
-                data[index] =
-                    value;
-
-                data[index + 1] =
-                    value;
-
-                data[index + 2] =
-                    value;
-
-                data[index + 3] =
-                    255;
-            }
-        }
-
-
-        ctx.putImageData(
-            image,
-            0,
-            0
-        );
-
-
-        return canvas;
-    }
-    generateDisplacementMap(
-        resolution = 512
-
-    ) {
-
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width =
-            resolution;
-
-        canvas.height =
-            resolution;
-
-
-        const ctx =
-            canvas.getContext("2d");
-
-        const image =
-            ctx.createImageData(
-                resolution,
-                resolution
-            );
-
-        const data =
-            image.data;
-
-
-        const heightRange =
-            Math.max(
-                this.maxHeight -
-                this.baseHeight,
-
-                0.000001
-            );
-
-
-        for (
-            let py = 0;
-            py < resolution;
-            py++
-        ) {
-
-            const v =
-                py /
-                (resolution - 1);
-
-
-            const worldZ =
-                this.worldOffsetZ +
-                (v - 0.5) *
-                this.size;
-
-
-            for (
-                let px = 0;
-                px < resolution;
-                px++
-            ) {
-
-                const u =
-                    px /
-                    (resolution - 1);
-
-
-                const worldX =
-                    this.worldOffsetX +
-                    (u - 0.5) *
-                    this.size;
-
-
-                const height =
-                    this.getHeight(
-                        worldX,
-                        worldZ
-                    );
-
-
-                const normalized =
-                    THREE.MathUtils.clamp(
-
-                        (
-                            height -
-                            this.baseHeight
-                        ) /
-                        heightRange,
-
-                        0,
-                        1
-
-                    );
-
-
-                const value =
-                    Math.round(
-                        normalized * 255
-                    );
-
-
-                const index =
-                    (
-                        py *
-                        resolution +
-                        px
-                    ) * 4;
-
-
-                data[index] =
-                    value;
-
-                data[index + 1] =
-                    value;
-
-                data[index + 2] =
-                    value;
-
-                data[index + 3] =
-                    255;
-
-            }
-
-        }
-
-
-        ctx.putImageData(
-            image,
-            0,
-            0
-        );
-
-
-        return canvas;
-
+            const value = Math.round(normalized * 255);
+
+            color[0] = value;
+            color[1] = value;
+            color[2] = value;
+        });
     }
 
 
-    // ==================================================
-    // GENERATE SURFACE MAP
-    // ==================================================
+    generateSurfaceMap(resolution = 512) {
 
-    generateSurfaceMap(
-        resolution = 512
-    ) {
+        const S = this.surfaceSystem.SURFACE;
 
-        const canvas =
-            document.createElement("canvas");
+        const table = new Map([
+            [S.GRASS, [70, 170, 50]],
+            [S.DIRT, [190, 155, 95]],
+            [S.GRAVEL, [145, 140, 125]],
+            [S.ROCK, [75, 78, 80]]
+        ]);
 
-        canvas.width =
-            resolution;
+        return this.renderMap(resolution, (x, z, color) => {
 
-        canvas.height =
-            resolution;
+            const surface =
+                this.surfaceSystem.getSurface(x, z, this);
+
+            const rgb = table.get(surface.type);
+
+            if (rgb) {
+                color[0] = rgb[0];
+                color[1] = rgb[1];
+                color[2] = rgb[2];
+            }
+        });
+    }
 
 
-        const ctx =
-            canvas.getContext("2d");
+    generatePropDistributionMap(type = "grass", resolution = 512) {
 
-        const image =
-            ctx.createImageData(
-                resolution,
-                resolution
+        return this.renderMap(resolution, (x, z, color) => {
+
+            const density =
+                this.propDistributionSystem.getDensity(type, x, z);
+
+            const value = Math.round(
+                THREE.MathUtils.clamp(density, 0, 1) * 255
             );
 
-        const data =
-            image.data;
-
-
-        for (
-            let py = 0;
-            py < resolution;
-            py++
-        ) {
-
-            const v =
-                py /
-                (resolution - 1);
-
-
-            const worldZ =
-                this.worldOffsetZ +
-                (v - 0.5) *
-                this.size;
-
-
-            for (
-                let px = 0;
-                px < resolution;
-                px++
-            ) {
-
-                const u =
-                    px /
-                    (resolution - 1);
-
-
-                const worldX =
-                    this.worldOffsetX +
-                    (u - 0.5) *
-                    this.size;
-
-
-                const surface =
-                    this.surfaceSystem.getSurface(
-
-                        worldX,
-                        worldZ,
-                        this
-
-                    );
-
-
-                let r = 0;
-                let g = 0;
-                let b = 0;
-
-
-                switch (
-                surface.type
-                ) {
-
-                    case this.surfaceSystem.SURFACE.GRASS:
-
-                        r = 70;
-                        g = 170;
-                        b = 50;
-
-                        break;
-
-
-                    case this.surfaceSystem.SURFACE.DIRT:
-
-                        r = 190;
-                        g = 155;
-                        b = 95;
-
-                        break;
-
-
-                    case this.surfaceSystem.SURFACE.GRAVEL:
-
-                        r = 145;
-                        g = 140;
-                        b = 125;
-
-                        break;
-
-
-                    case this.surfaceSystem.SURFACE.ROCK:
-
-                        r = 75;
-                        g = 78;
-                        b = 80;
-
-                        break;
-
-                }
-
-
-                const index =
-                    (
-                        py *
-                        resolution +
-                        px
-                    ) * 4;
-
-
-                data[index] =
-                    r;
-
-                data[index + 1] =
-                    g;
-
-                data[index + 2] =
-                    b;
-
-                data[index + 3] =
-                    255;
-
-            }
-
-        }
-
-
-        ctx.putImageData(
-            image,
-            0,
-            0
-        );
-
-
-        return canvas;
-
+            color[0] = value;
+            color[1] = value;
+            color[2] = value;
+        });
     }
+
+
     // ==================================================
     // CLEANUP
     // ==================================================
 
     dispose() {
 
+        if (this.disposed) {
+            return;
+        }
+
         this.disposed = true;
         this.generationVersion++;
 
-        if (
-            this.mesh
-        ) {
-
-            this.scene.remove(
-                this.mesh
-            );
+        if (this.mesh) {
+            this.scene.remove(this.mesh);
         }
 
-
-        if (
-            this.skirtMesh
-        ) {
-
-            this.scene.remove(
-                this.skirtMesh
-            );
+        if (this.skirtMesh) {
+            this.scene.remove(this.skirtMesh);
         }
 
-
-        if (
-            this.geometry
-        ) {
-
+        if (this.geometry) {
             this.geometry.dispose();
         }
 
-
-        if (
-            this.skirtGeometry
-        ) {
-
+        if (this.skirtGeometry) {
             this.skirtGeometry.dispose();
         }
 
-
-        if (
-            this.material
-        ) {
-
+        // A shared material is owned by ChunkManager
+        if (this.ownsMaterial && this.material) {
             this.material.dispose();
         }
 
+        this.mesh = null;
+        this.skirtMesh = null;
+        this.geometry = null;
+        this.skirtGeometry = null;
+        this.material = null;
 
-        this.mesh =
-            null;
-
-        this.skirtMesh =
-            null;
-
-        this.geometry =
-            null;
-
-        this.skirtGeometry =
-            null;
-
-        this.material =
-            null;
-
-        this.hills = [];
+        // Release the large data arrays
+        this.terrainGrid = null;
     }
 }

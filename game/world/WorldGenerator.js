@@ -88,6 +88,12 @@ constructor({
 
         this.fieldRange =
             1.0;
+        this._cellCache = new Map();
+        // constructor
+this._nc = [];
+for (let i = 0; i < 8; i++) {
+    this._nc.push({ x0: NaN, z0: NaN, v00: 0, v10: 0, v01: 0, v11: 0 });
+}
 
     }
 
@@ -179,153 +185,42 @@ constructor({
     // VALUE NOISE
     // ==================================================
 
-    valueNoise(
-        x,
-        z
-    ) {
+valueNoise(x, z, slot) {
 
-        const x0 =
-            Math.floor(x);
+    const x0 = Math.floor(x);
+    const z0 = Math.floor(z);
+    const c = this._nc[slot];
 
-        const z0 =
-            Math.floor(z);
-
-
-        const x1 =
-            x0 + 1;
-
-        const z1 =
-            z0 + 1;
-
-
-        const tx =
-            this.smooth(
-                x - x0
-            );
-
-        const tz =
-            this.smooth(
-                z - z0
-            );
-
-
-        const v00 =
-            this.hash2D(
-                x0,
-                z0,
-                0
-            );
-
-
-        const v10 =
-            this.hash2D(
-                x1,
-                z0,
-                0
-            );
-
-
-        const v01 =
-            this.hash2D(
-                x0,
-                z1,
-                0
-            );
-
-
-        const v11 =
-            this.hash2D(
-                x1,
-                z1,
-                0
-            );
-
-
-        const a =
-            THREE.MathUtils.lerp(
-                v00,
-                v10,
-                tx
-            );
-
-
-        const b =
-            THREE.MathUtils.lerp(
-                v01,
-                v11,
-                tx
-            );
-
-
-        return THREE.MathUtils.lerp(
-            a,
-            b,
-            tz
-        );
-
+    if (c.x0 !== x0 || c.z0 !== z0) {
+        c.x0 = x0;
+        c.z0 = z0;
+        c.v00 = this.hash2D(x0,     z0,     0);
+        c.v10 = this.hash2D(x0 + 1, z0,     0);
+        c.v01 = this.hash2D(x0,     z0 + 1, 0);
+        c.v11 = this.hash2D(x0 + 1, z0 + 1, 0);
     }
 
+    const fx = x - x0, fz = z - z0;
+    const tx = fx * fx * (3 - 2 * fx);
+    const tz = fz * fz * (3 - 2 * fz);
 
-    // ==================================================
-    // FRACTAL NOISE
-    // ==================================================
+    const a = c.v00 + (c.v10 - c.v00) * tx;
+    const b = c.v01 + (c.v11 - c.v01) * tx;
+    return a + (b - a) * tz;
+}
 
-    fractalNoise(
-        x,
-        z
-    ) {
+fractalNoise(x, z, layer) {
 
-        let value =
-            0.0;
+    let value = 0, amplitude = 1, frequency = 1, sum = 0;
 
-        let amplitude =
-            1.0;
-
-        let frequency =
-            1.0;
-
-        let amplitudeSum =
-            0.0;
-
-
-        for (
-            let octave = 0;
-            octave < 4;
-            octave++
-        ) {
-
-            value +=
-
-                this.valueNoise(
-                    x * frequency,
-                    z * frequency
-                ) *
-                amplitude;
-
-
-            amplitudeSum +=
-                amplitude;
-
-
-            amplitude *=
-                0.5;
-
-
-            frequency *=
-                2.0;
-
-        }
-
-
-        return (
-
-            value /
-            amplitudeSum
-
-        );
-
+    for (let o = 0; o < 4; o++) {
+        value += this.valueNoise(x * frequency, z * frequency, layer * 4 + o) * amplitude;
+        sum += amplitude;
+        amplitude *= 0.5;
+        frequency *= 2;
     }
-
+    return value / sum;
+}
 
     // ==================================================
     // MACRO CELL COORDINATE
@@ -359,165 +254,59 @@ constructor({
     // CREATE HILLS FOR ONE MACRO CELL
     // ==================================================
 
-    getCellHills(
-        cellX,
-        cellZ
-    ) {
+getCellHills(cellX, cellZ) {
 
-        const hills =
-            [];
+    const key = (cellX + 32768) * 65536 + (cellZ + 32768);
+    let hills = this._cellCache.get(key);
+    if (hills !== undefined) return hills;
 
+    hills = [];
+    const cellSize = this.macroCellSize;
+    const p = this.combinationPower;
 
-        const cellSize =
-            this.macroCellSize;
+    for (let i = 0; i < this.hillsPerCell; i++) {
 
+        const randomX = this.hash2D(
+            cellX * 13.17 + i * 17.31,
+            cellZ * 19.73 + i * 31.73,
+            1
+        );
 
-        const cellOriginX =
-            cellX *
-            cellSize;
+        const randomZ = this.hash2D(
+            cellX * 23.91 + i * 37.91,
+            cellZ * 29.17 + i * 47.91,
+            2
+        );
 
+        const randomStrength = this.hash2D(
+            cellX * 41.27 + i * 53.17,
+            cellZ * 59.83 + i * 63.17,
+            3
+        );
 
-        const cellOriginZ =
-            cellZ *
-            cellSize;
+        const randomRadius = this.hash2D(
+            cellX * 67.19 + i * 71.43,
+            cellZ * 73.91 + i * 79.21,
+            4
+        );
 
+        const x = cellX * cellSize + THREE.MathUtils.lerp(cellSize * 0.10, cellSize * 0.90, randomX);
+        const z = cellZ * cellSize + THREE.MathUtils.lerp(cellSize * 0.10, cellSize * 0.90, randomZ);
+        const strength = THREE.MathUtils.lerp(0.45, 1.0, randomStrength);
+        const radius = THREE.MathUtils.lerp(170.0, 340.0, randomRadius);
 
-        for (
-            let i = 0;
-            i < this.hillsPerCell;
-            i++
-        ) {
-
-            /*
-             * Every value here depends only on:
-             *
-             * seed
-             * cellX
-             * cellZ
-             * hill index
-             *
-             * Therefore this cell can be regenerated
-             * anywhere without storing it.
-             */
-
-            const randomX =
-                this.hash2D(
-                    cellX * 13.17 +
-                    i * 17.31,
-
-                    cellZ * 19.73 +
-                    i * 31.73,
-
-                    1
-                );
-
-
-            const randomZ =
-                this.hash2D(
-                    cellX * 23.91 +
-                    i * 37.91,
-
-                    cellZ * 29.17 +
-                    i * 47.91,
-
-                    2
-                );
-
-
-            const randomStrength =
-                this.hash2D(
-                    cellX * 41.27 +
-                    i * 53.17,
-
-                    cellZ * 59.83 +
-                    i * 63.17,
-
-                    3
-                );
-
-
-            const randomRadius =
-                this.hash2D(
-                    cellX * 67.19 +
-                    i * 71.43,
-
-                    cellZ * 73.91 +
-                    i * 79.21,
-
-                    4
-                );
-
-
-            /*
-             * Keep formations away from the exact
-             * cell boundaries so neighboring cells
-             * overlap naturally.
-             */
-
-            const x =
-                cellOriginX +
-
-                THREE.MathUtils.lerp(
-                    cellSize * 0.10,
-                    cellSize * 0.90,
-                    randomX
-                );
-
-
-            const z =
-                cellOriginZ +
-
-                THREE.MathUtils.lerp(
-                    cellSize * 0.10,
-                    cellSize * 0.90,
-                    randomZ
-                );
-
-
-            /*
-             * Formation strength.
-             */
-
-            const strength =
-                THREE.MathUtils.lerp(
-                    0.45,
-                    1.0,
-                    randomStrength
-                );
-
-
-            /*
-             * Large radius creates broad rolling
-             * geographical formations.
-             */
-
-            const radius =
-                THREE.MathUtils.lerp(
-                    170.0,
-                    340.0,
-                    randomRadius
-                );
-
-
-            hills.push({
-
-                x,
-
-                z,
-
-                strength,
-
-                radius
-
-            });
-
-        }
-
-
-        return hills;
-
+        hills.push({
+            x,
+            z,
+            strengthPow: Math.pow(strength, p),
+            k: 1.6 * p / (radius * radius),
+            cullSq: (radius * 2.5) * (radius * 2.5)
+        });
     }
 
+    this._cellCache.set(key, hills);
+    return hills;
+}
 
     // ==================================================
     // GAUSSIAN INFLUENCE
@@ -548,139 +337,35 @@ constructor({
     // RAW TERRAIN FIELD
     // ==================================================
 
-    getRawField(
-        x,
-        z
-    ) {
+    getRawField(x, z) {
+    
+    
+    const size = this.macroCellSize;
+    const cx = Math.floor(x / size);   // no {x, z} object allocation
+    const cz = Math.floor(z / size);
 
-        /*
-         * Find which macro cell contains this position.
-         */
+    let poweredSum = 0.0;
 
-        const cell =
-            this.getMacroCell(
-                x,
-                z
-            );
+    for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
 
+            const hills = this.getCellHills(cx + dx, cz + dz);
 
-        let poweredSum =
-            0.0;
+            for (let i = 0; i < hills.length; i++) {
+                const h = hills[i];
+                const ox = x - h.x;
+                const oz = z - h.z;
+                const d2 = ox * ox + oz * oz;
 
+                if (d2 > h.cullSq) continue;
 
-        /*
-         * Only inspect the surrounding cells.
-         *
-         * Because the largest hill radius is 340
-         * and cells are 512 wide, a 3×3 neighborhood
-         * is sufficient.
-         */
-
-        for (
-            let dz = -1;
-            dz <= 1;
-            dz++
-        ) {
-
-            for (
-                let dx = -1;
-                dx <= 1;
-                dx++
-            ) {
-
-                const hills =
-                    this.getCellHills(
-
-                        cell.x + dx,
-
-                        cell.z + dz
-
-                    );
-
-
-                for (
-                    const hill
-                    of hills
-                ) {
-
-                    const offsetX =
-                        x -
-                        hill.x;
-
-
-                    const offsetZ =
-                        z -
-                        hill.z;
-
-
-                    const distance =
-                        Math.sqrt(
-
-                            offsetX *
-                            offsetX +
-
-                            offsetZ *
-                            offsetZ
-
-                        );
-
-
-                    if (
-                        distance >
-                        hill.radius * 2.5
-                    ) {
-
-                        continue;
-
-                    }
-
-
-                    const influence =
-                        this.gaussian(
-
-                            distance,
-
-                            hill.radius
-
-                        );
-
-
-                    const contribution =
-                        influence *
-                        hill.strength;
-
-
-                    poweredSum +=
-
-                        Math.pow(
-
-                            contribution,
-
-                            this.combinationPower
-
-                        );
-
-                }
-
+                poweredSum += h.strengthPow * Math.exp(-d2 * h.k);
             }
-
         }
+    }
 
+    let field = Math.pow(poweredSum, 1.0 / this.combinationPower);
 
-        /*
-         * Combine overlapping geographical
-         * formations.
-         */
-
-        let field =
-            Math.pow(
-
-                poweredSum,
-
-                1.0 /
-                this.combinationPower
-
-            );
 
 
         /*
@@ -688,14 +373,7 @@ constructor({
          * between major formations.
          */
 
-        const broadNoise =
-            this.fractalNoise(
-
-                x * 0.0045,
-
-                z * 0.0045
-
-            );
+        const broadNoise = this.fractalNoise(x * 0.0045, z * 0.0045, 0);
 
 
         field =
@@ -711,14 +389,7 @@ constructor({
          * of isolated circular hills.
          */
 
-        const continentalNoise =
-            this.fractalNoise(
-
-                x * 0.0012,
-
-                z * 0.0012
-
-            );
+        const continentalNoise = this.fractalNoise(x * 0.0012, z * 0.0012, 1);
 
 
         field =
@@ -892,33 +563,12 @@ getHeight(
     // SLOPE
     // ==================================================
 
-    getSlope(
-        x,
-        z
-    ) {
-
-        const normal =
-            this.getNormal(
-                x,
-                z
-            );
-
-
-        return Math.acos(
-
-            THREE.MathUtils.clamp(
-
-                normal.y,
-
-                -1.0,
-
-                1.0
-
-            )
-
-        );
-
-    }
+  getSlope(x, z) {
+      const e = 0.5;
+      const dx = this.getHeight(x + e, z) - this.getHeight(x - e, z);
+      const dz = this.getHeight(x, z + e) - this.getHeight(x, z - e);
+      return Math.atan(Math.hypot(dx, dz) / (2 * e)); // same value as acos(normal.y)
+  }
 
 // ==================================================
 // TERRAIN SAMPLE

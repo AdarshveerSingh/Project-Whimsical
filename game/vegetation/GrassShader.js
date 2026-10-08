@@ -3,12 +3,19 @@ import * as THREE from "three";
 // GrassShader.js
 // ==================================================
 
+
 export function applyGrassShader(
     material,
     curveStrength = 0.35,
-    grassWidth = 0.12
+    grassWidth = 0.12,
+    { animateWind = true } = {}
 ) {
-
+if (!animateWind) {
+    material.defines = {
+        ...material.defines,
+        GRASS_STATIC: 1
+    };
+}
     material.onBeforeCompile = (shader) => {
 
         // ==================================================
@@ -267,414 +274,179 @@ varying float vColorVariation;
         // BEGIN VERTEX
         // ==================================================
 
-        shader.vertexShader =
-            shader.vertexShader.replace(
+ shader.vertexShader = shader.vertexShader.replace(
+    "#include <begin_vertex>",
+    `
+        #include <begin_vertex>
 
-                "#include <begin_vertex>",
+        // ==================================================
+        // HEIGHT AND INSTANCE VARIATION
+        // ==================================================
+
+        float heightPercent = clamp(
+            position.y / 0.8,
+            0.0,
+            1.0
+        );
+
+        vGrassHeight = heightPercent;
+        vColorVariation = instanceColorVariation;
+
+        #ifndef GRASS_STATIC
 
-                `
+        // ==================================================
+        // ROOT WORLD POSITION
+        // ==================================================
+
+        vec3 grassBladeWorldPos = (
+            modelMatrix *
+            instanceMatrix *
+            vec4(0.0, 0.0, 0.0, 1.0)
+        ).xyz;
+
+        // ==================================================
+        // WIND POSITION AND DIRECTION
+        // ==================================================
+
+        vec2 windPosition = grassBladeWorldPos.xz;
+
+        // Precalculated normalized direction.
+        vec2 windDirection = vec2(0.943858, 0.330350);
+
+        // ==================================================
+        // LARGE WIND NOISE
+        // ==================================================
+
+        float largeWind = grassNoise(
+            windPosition * 0.18 +
+            windDirection * time * 0.75
+        );
+
+        // ==================================================
+        // SMALL WIND NOISE
+        // ==================================================
 
-                #include <begin_vertex>
+        float smallWind = grassNoise(
+            windPosition * 0.45 +
+            windDirection * time * 0.60
+        );
 
+        // ==================================================
+        // COMBINE AND REMAP WIND NOISE
+        // ==================================================
 
-                // ==================================================
-                // HEIGHT
-                // ==================================================
+        float windNoise = clamp(
+            ((largeWind * 0.70 + smallWind * 0.30) - 0.5) * 1.6 + 0.5,
+            0.0,
+            1.0
+        );
 
-                float heightPercent =
+        vWindNoise = windNoise;
 
-                    clamp(
+        // ==================================================
+        // BEND PROFILE
+        // ==================================================
 
-                        position.y / 0.8,
-
-                        0.0,
-
-                        1.0
-
-                    );
-
-
-                vGrassHeight =
-
-                    heightPercent;
-                
-                vColorVariation =
-    instanceColorVariation;
-
-
-                // ==================================================
-                // ROOT WORLD POSITION
-                // ==================================================
-
-                vec3 grassBladeWorldPos =
-
-                    (
-
-                        modelMatrix *
-
-                        instanceMatrix *
-
-                        vec4(
-
-                            0.0,
-                            0.0,
-                            0.0,
-                            1.0
-
-                        )
-
-                    ).xyz;
-
-
-                // ==================================================
-                // WIND POSITION
-                // ==================================================
-
-                vec2 windPosition =
-
-                    grassBladeWorldPos.xz;
-
-
-                // ==================================================
-                // GLOBAL WIND DIRECTION
-                // ==================================================
-
-                vec2 windDirection =
-
-                    normalize(
-
-                        vec2(
-
-                            1.0,
-
-                            0.35
-
-                        )
-
-                    );
-
-
-                // ==================================================
-                // LARGE NOISE
-                // ==================================================
-
-                float largeWind =
-
-                    grassNoise(
-
-                        windPosition *
-
-                        0.18
-
-                        +
-
-                        windDirection *
-
-                        time *
-
-                        0.75
-
-                    );
-
-
-                // ==================================================
-                // SMALL NOISE
-                // ==================================================
-
-                float smallWind =
-
-                    grassNoise(
-
-                        windPosition *
-
-                        0.45
-
-                        +
-
-                        windDirection *
-
-                        time *
-
-                        0.60
-
-                    );
-
-
-                // ==================================================
-                // COMBINE NOISE
-                // ==================================================
-
-                float windNoise =
-
-                    largeWind *
-
-                    0.70
-
-                    +
-
-                    smallWind *
-
-                    0.30;
-
-
-                // ==================================================
-                // REMAP NOISE
-                // ==================================================
-
-                windNoise =
-
-                    clamp(
-
-                        (windNoise - 0.5) *
-
-                        1.6 +
-
-                        0.5,
-
-                        0.0,
-
-                        1.0
-
-                    );
-
-
-                // ==================================================
-                // SEND NOISE TO FRAGMENT
-                // ==================================================
-
-                vWindNoise =
-
-                    windNoise;
-
-
-                // ==================================================
-                // ROOT BEND PROFILE
-                // ==================================================
-
-                float rootBend =
-
-                    smoothstep(
-
-                        0.0,
-
-                        0.9,
-
-                        heightPercent
-
-                    );
-
-
-                // ==================================================
-                // BEND PROFILE
-                // ==================================================
-
-                float bendProfile =
-
-                    pow(
-
-                        rootBend,
-
-                        0.65
-
-                    );
-
-
-                // ==================================================
-                // WIND ANGLE
-                // ==================================================
-
-                float windAngle =
-
-                    windNoise *
-
-                    bendProfile *
-
-                    1.0;
-
-
-                // ==================================================
-                // ACTUAL WIND BEND AMOUNT
-                // ==================================================
-
-                vBendAmount =
-
-                    clamp(
-
-                        windAngle,
-
-                        0.0,
-
-                        1.0
-
-                    );
-
-
-                // ==================================================
-                // INITIAL BEND
-                // ==================================================
-
-                float initialAngle =
-
-                    instanceCurve *
-
-                    curveStrength *
-
-                    pow(
-
-                        heightPercent,
-
-                        1.15
-
-                    );
-
-
-                // ==================================================
-                // TOTAL BEND
-                // ==================================================
-
-                float totalAngle =
-
-                    initialAngle +
-
-                    windAngle;
-
-
-                // ==================================================
-                // WIND VECTOR
-                // ==================================================
-
-                vec3 windVector =
-
-                    normalize(
-
-                        vec3(
-
-                            windDirection.x,
-
-                            0.0,
-
-                            windDirection.y
-
-                        )
-
-                    );
-
-
-                // ==================================================
-                // WORLD UP
-                // ==================================================
-
-                vec3 worldUp =
-
-                    vec3(
-
-                        0.0,
-                        1.0,
-                        0.0
-
-                    );
-
-
-                // ==================================================
-                // ROTATION AXIS
-                // ==================================================
-
-                vec3 rotationAxis =
-
-                    normalize(
-
-                        cross(
-
-                            worldUp,
-
-                            windVector
-
-                        )
-
-                    );
-
-
-                // ==================================================
-                // WORLD POSITION
-                // ==================================================
-
-                vec3 worldVertex =
-
-                    (
-
-                        modelMatrix *
-
-                        instanceMatrix *
-
-                        vec4(
-
-                            transformed,
-
-                            1.0
-
-                        )
-
-                    ).xyz;
-
-
-                // ==================================================
-                // POSITION RELATIVE TO ROOT
-                // ==================================================
-
-                vec3 relativePosition =
-
-                    worldVertex -
-
-                    grassBladeWorldPos;
-
-
-                // ==================================================
-                // APPLY BEND
-                // ==================================================
-
-                relativePosition =
-
-                    rotateAroundAxis(
-
-                        relativePosition,
-
-                        rotationAxis,
-
-                        totalAngle
-
-                    );
-
-
-                // ==================================================
-                // FINAL WORLD POSITION
-                // ==================================================
-
-                worldVertex =
-
-                    grassBladeWorldPos +
-
-                    relativePosition;
-
-
-                // ==================================================
-                // VIEW POSITION
-                // ==================================================
-
-                vec4 mvPosition =
-
-                    viewMatrix *
-
-                    vec4(
-
-                        worldVertex,
-
-                        1.0
-
-                    );
-
-                `
-
-            );
+        float rootBend = smoothstep(
+            0.0,
+            0.9,
+            heightPercent
+        );
+
+        float bendProfile = pow(rootBend, 0.65);
+
+        float windAngle = windNoise * bendProfile;
+
+        vBendAmount = clamp(
+            windAngle,
+            0.0,
+            1.0
+        );
+
+        // ==================================================
+        // INITIAL BEND AND TOTAL BEND
+        // ==================================================
+
+        float initialAngle = instanceCurve *
+            curveStrength *
+            pow(heightPercent, 1.15);
+
+        float totalAngle = initialAngle + windAngle;
+
+        // ==================================================
+        // WIND VECTOR AND ROTATION AXIS
+        // ==================================================
+
+        vec3 windVector = vec3(
+            windDirection.x,
+            0.0,
+            windDirection.y
+        );
+
+        vec3 worldUp = vec3(0.0, 1.0, 0.0);
+
+        vec3 rotationAxis = normalize(
+            cross(worldUp, windVector)
+        );
+
+        // ==================================================
+        // WORLD POSITION
+        // ==================================================
+
+        vec3 worldVertex = (
+            modelMatrix *
+            instanceMatrix *
+            vec4(transformed, 1.0)
+        ).xyz;
+
+        // ==================================================
+        // POSITION RELATIVE TO ROOT
+        // ==================================================
+
+        vec3 relativePosition =
+            worldVertex - grassBladeWorldPos;
+
+        // ==================================================
+        // APPLY BEND
+        // ==================================================
+
+        relativePosition = rotateAroundAxis(
+            relativePosition,
+            rotationAxis,
+            totalAngle
+        );
+
+        // ==================================================
+        // FINAL WORLD POSITION
+        // ==================================================
+
+        worldVertex =
+            grassBladeWorldPos + relativePosition;
+
+        #else
+
+        // ==================================================
+        // STATIC LOD: NO WIND OR BENDING
+        // ==================================================
+
+        vWindNoise = 0.0;
+        vBendAmount = 0.0;
+
+        vec3 worldVertex = (
+            modelMatrix *
+            instanceMatrix *
+            vec4(transformed, 1.0)
+        ).xyz;
+
+        #endif
+
+        // ==================================================
+        // VIEW POSITION
+        // ==================================================
+
+        vec4 mvPosition = viewMatrix * vec4(worldVertex, 1.0);
+    `
+);
 
 
         // ==================================================

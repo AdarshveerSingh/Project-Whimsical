@@ -143,6 +143,8 @@ export class ChunkManager {
             new TerrainWorkerPool({
                 workerCount: 2
             });
+        this.loadQueue = [];
+        this.loadQueued = new Set();
 
     }
 
@@ -186,7 +188,27 @@ export class ChunkManager {
         };
     }
 
+processLoadQueue(budget = 1) {
 
+    if (this.currentChunkX === null || this.loadQueue.length === 0) return;
+
+    for (const job of this.loadQueue) {
+        job.distance = this.getChunkDistance(
+            job.chunkX, job.chunkZ,
+            this.currentChunkX, this.currentChunkZ
+        );
+    }
+    this.loadQueue.sort((a, b) => a.distance - b.distance);
+
+    while (budget-- > 0 && this.loadQueue.length) {
+        const job = this.loadQueue.shift();
+        this.loadQueued.delete(job.key);
+
+        if (job.distance > this.viewDistance) continue;
+
+        this.loadChunk(job.chunkX, job.chunkZ, job.lod = this.getLOD(job.distance));
+    }
+}
     // ==================================================
     // CHUNK DISTANCE
     // ==================================================
@@ -673,8 +695,8 @@ export class ChunkManager {
                 playerPosition.z
 
             );
-
-
+           this.processLoadQueue()
+            
         // ==================================================
         // PLAYER STILL IN SAME CHUNK
         // ==================================================
@@ -802,15 +824,10 @@ export class ChunkManager {
                     )
                 ) {
 
-                    this.loadChunk(
-
-                        chunkX,
-
-                        chunkZ,
-
-                        lod
-
-                    );
+                    if (!this.chunks.has(key) && !this.loadQueued.has(key)) {
+    this.loadQueued.add(key);
+    this.loadQueue.push({ chunkX, chunkZ, lod, key, distance });
+}
 
                 }
 
@@ -1044,74 +1061,7 @@ export class ChunkManager {
             resolution
         );
     }
-    // ==================================================
-    // GENERATE DISPLACEMENT MAP
-    // ==================================================
-
-    generateDisplacementMap(
-        chunkX = 0,
-        chunkZ = 0,
-        resolution = 512
-    ) {
-
-        const chunk =
-            this.getChunk(
-                chunkX,
-                chunkZ
-            );
-
-
-        if (!chunk) {
-
-            console.warn(
-                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-            );
-
-            return null;
-
-        }
-
-
-        return chunk.terrain.generateDisplacementMap(
-            resolution
-        );
-
-    }
-
-
-    // ==================================================
-    // GENERATE SURFACE MAP
-    // ==================================================
-
-    generateSurfaceMap(
-        chunkX = 0,
-        chunkZ = 0,
-        resolution = 512
-    ) {
-
-        const chunk =
-            this.getChunk(
-                chunkX,
-                chunkZ
-            );
-
-
-        if (!chunk) {
-
-            console.warn(
-                `Chunk ${chunkX}, ${chunkZ} is not loaded.`
-            );
-
-            return null;
-
-        }
-
-
-        return chunk.terrain.generateSurfaceMap(
-            resolution
-        );
-
-    }
+    
     // ==================================================
     // VEGETATION DEBUG CONTROL
     // ==================================================
@@ -1242,35 +1192,36 @@ export class ChunkManager {
     // DISPOSE
     // ==================================================
 
-    dispose() {
+ dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
 
-        for (
-            const chunk
-            of this.chunks.values()
-        ) {
+    console.log("Chunks before shutdown:", this.chunks.size);
 
-            if (
-                this.grassSystem
-            ) {
+    for (const chunk of this.chunks.values()) {
+        const { x, z, terrain } = chunk;
 
-                this.grassSystem.unregisterTerrainChunk(
+        this.grassSystem?.unregisterTerrainChunk(x, z);
+        this.treeSystem?.unregisterTerrainChunk(x, z);
+        this.rockSystem?.unregisterTerrainChunk(x, z);
+        this.flowerSystem?.unregisterTerrainChunk(x, z);
+        this.bushSystem?.unregisterTerrainChunk(x, z);
 
-                    chunk.x,
-
-                    chunk.z
-
-                );
-
-            }
-
-
-            chunk.terrain.dispose();
-
-        }
-
-
-        this.chunks.clear();
-
+        terrain.dispose();
     }
+
+    this.chunks.clear();
+    this.loadQueue.length = 0;
+    this.loadQueued.clear();
+
+    // Terminate workers and reject pending terrain jobs.
+    this.terrainWorkerPool.dispose();
+
+    console.log("Chunks after shutdown:", this.chunks.size);
+    console.log(
+        "Worker pool disposed:",
+        this.terrainWorkerPool.disposed
+    );
+}
 
 }

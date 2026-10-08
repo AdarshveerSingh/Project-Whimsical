@@ -5,6 +5,8 @@ import {
 } from "../node_modules/three/examples/jsm/loaders/GLTFLoader.js";
 
 import PropDistributionSystem from "./PropDistributionSystem.js";
+
+import { mergeGeometries } from "../node_modules/three/examples/jsm/utils/BufferGeometryUtils.js";
 // ============================================================
 // ROCK SYSTEM
 // ============================================================
@@ -1600,7 +1602,10 @@ if (this.placementRegistry) {
                         }
                     );
 
-
+                      rock.traverse((o) => {
+      o.updateMatrix();
+      o.matrixAutoUpdate = false;
+  });
                     // =================================================
                     // ADD
                     // =================================================
@@ -1620,13 +1625,42 @@ if (this.placementRegistry) {
         // ADD GROUP TO SCENE
         // =================================================
 
-        this.scene.add(
-            group
-        );
+        group.updateMatrixWorld(true);
 
+const byMaterial = new Map();
 
-        chunk.group =
-            group;
+group.traverse((o) => {
+
+    if (!o.isMesh) return;
+
+    const g = o.geometry.clone();
+    g.applyMatrix4(o.matrixWorld);          // bake position, rotation, scale
+
+    if (!byMaterial.has(o.material)) byMaterial.set(o.material, []);
+    byMaterial.get(o.material).push(g);
+});
+
+const merged = new THREE.Group();
+merged.name = group.name;
+
+for (const [material, geometries] of byMaterial) {
+
+    const geometry = mergeGeometries(geometries);
+
+    geometries.forEach(g => g.dispose());
+
+    if (!geometry) continue;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.matrixAutoUpdate = false;
+    merged.add(mesh);
+}
+
+this.scene.add(merged);
+chunk.group = merged;
+
 
     }
 

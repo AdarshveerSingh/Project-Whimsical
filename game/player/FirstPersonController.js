@@ -126,7 +126,8 @@ export class FirstPersonController {
             backward: false,
             left: false,
             right: false,
-            jump: false
+            jump: false,
+            sprint: false
 
         };
 
@@ -457,6 +458,12 @@ export class FirstPersonController {
 
                 break;
 
+            case "shift":
+            console.log("Shift pressed");
+            this.keys.sprint = true;
+
+                break;
+
         }
 
     }
@@ -501,6 +508,12 @@ export class FirstPersonController {
             case "Space":
 
                 this.keys.jump = false;
+
+                break;
+
+            case "Sprint":
+
+                this.keys.sprint = false;
 
                 break;
 
@@ -825,7 +838,12 @@ export class FirstPersonController {
 
         }
 
-
+        if(this.keys.sprint){
+            this.movementSpeed * 20;
+        }
+        else{
+            this.movementSpeed * 1;
+        }
         // ==================================================
         // GRAVITY
         // ==================================================

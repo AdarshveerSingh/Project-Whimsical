@@ -8,6 +8,10 @@ import PropDistributionSystem from "./PropDistributionSystem.js";
 
 import { applyShadowOnly } from "../rendering/ShadowOnly.js";
 
+import {
+    mergeGeometries
+} from "../node_modules/three/examples/jsm/utils/BufferGeometryUtils.js";
+
 export class FlowerSystem {
 
     constructor({
@@ -67,6 +71,7 @@ export class FlowerSystem {
 
         this.flowerModels =
             new Map();
+        this.flowerMaterial = null;
 
         this.modelReady =
             false;
@@ -114,17 +119,17 @@ export class FlowerSystem {
             0.55;
 
         // ==================================================
-// FLOWER CLUSTERS
-// ==================================================
+        // FLOWER CLUSTERS
+        // ==================================================
 
-this.clusterMin =
-    3;
+        this.clusterMin =
+            3;
 
-this.clusterMax =
-    7;
+        this.clusterMax =
+            7;
 
-this.clusterRadius =
-    2.0;
+        this.clusterRadius =
+            2.0;
         // ==================================================
         // LOAD MODEL
         // ==================================================
@@ -133,218 +138,80 @@ this.clusterRadius =
 
     }
 
-// ==================================================
-// FLOWER WIND SHADER
-// ==================================================
-
-// ==================================================
-// FLOWER WIND SHADER
-// ==================================================
-
-// ==================================================
-// FLOWER WIND SHADER
-// ==================================================
-
-applyWindShader(material, geometry) {
-
     // ==================================================
-    // GEOMETRY HEIGHT
+    // FLOWER WIND SHADER
     // ==================================================
 
-    if (!geometry.boundingBox) {
-        geometry.computeBoundingBox();
-    }
+    // ==================================================
+    // FLOWER WIND SHADER
+    // ==================================================
 
-    const minY = geometry.boundingBox.min.y;
-    const maxY = geometry.boundingBox.max.y;
+    // ==================================================
+    // FLOWER WIND SHADER
+    // ==================================================
 
-    const height = Math.max(
-        maxY - minY,
-        0.001
-    );
+    applyWindShader(material) {
+        material.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 };
 
-
-    material.onBeforeCompile = (shader) => {
-
-        // ==================================================
-        // UNIFORMS
-        // ==================================================
-
-        shader.uniforms.time = {
-            value: 0
-        };
-
-        shader.uniforms.flowerMinY = {
-            value: minY
-        };
-
-        shader.uniforms.flowerHeight = {
-            value: height
-        };
-
-
-        // ==================================================
-        // DECLARE UNIFORMS
-        // ==================================================
-
-        shader.vertexShader =
-            shader.vertexShader.replace(
-
+            shader.vertexShader = shader.vertexShader.replace(
                 "#include <common>",
-
                 `
-                #include <common>
+            #include <common>
 
-                uniform float time;
-                uniform float flowerMinY;
-                uniform float flowerHeight;
-                `
+            uniform float time;
+
+            attribute float flowerHeight01;
+            attribute vec3 flowerWindPosition;
+            `
             );
 
-
-        // ==================================================
-        // WIND
-        // ==================================================
-
-        shader.vertexShader =
-            shader.vertexShader.replace(
-
+            shader.vertexShader = shader.vertexShader.replace(
                 "#include <project_vertex>",
-
                 `
-                #include <project_vertex>
+            #include <project_vertex>
 
-
-                // ==================================================
-                // ROOT → TIP
-                // ==================================================
-
-                float flowerHeight01 =
-                    clamp(
-                        (
-                            position.y -
-                            flowerMinY
-                        ) /
-                        flowerHeight,
-
-                        0.0,
-                        1.0
-                    );
-
-
-                // ==================================================
-                // ROOT LOCK
-                // ==================================================
-
-                // Bottom 30% stays completely still.
-                // Movement gradually starts above it.
-
-                float upperPart =
-                    smoothstep(
-                        0.30,
-                        0.65,
-                        flowerHeight01
-                    );
-
-
-                // Stronger movement toward the tip.
-
-                float bend =
-                    upperPart *
-                    upperPart;
-
-
-                // ==================================================
-                // INSTANCE POSITION
-                // ==================================================
-
-                vec3 flowerWorldPosition =
-                    (instanceMatrix *
-                     vec4(transformed, 1.0)).xyz;
-
-
-                // ==================================================
-                // WIND PHASE
-                // ==================================================
-
-                float phase =
-                    flowerWorldPosition.x * 0.08 +
-                    flowerWorldPosition.z * 0.06;
-
-
-                // ==================================================
-                // MAIN WIND
-                // ==================================================
-
-                float largeWind =
-                    sin(
-                        time * 2.2 +
-                        phase
-                    );
-
-
-                // ==================================================
-                // SECONDARY WIND
-                // ==================================================
-
-                float smallWind =
-                    sin(
-                        time * 4.0 +
-                        phase * 1.7
-                    );
-
-
-                // ==================================================
-                // COMBINE
-                // ==================================================
-
-                float wind =
-                    largeWind * 0.75 +
-                    smallWind * 0.25;
-
-
-                // ==================================================
-                // WIND OFFSET
-                // ==================================================
-
-                vec3 windOffset =
-                    vec3(
-                        wind * 0.32 * bend,
-                        0.0,
-                        wind * 0.11 * bend
-                    );
-
-
-                // ==================================================
-                // APPLY WIND
-                // ==================================================
-
-                mvPosition.xyz +=
-                    (
-                        modelViewMatrix *
-                        vec4(
-                            windOffset,
-                            0.0
-                        )
-                    ).xyz;
-
-
-                gl_Position =
-                    projectionMatrix *
-                    mvPosition;
-                `
+            // Per-vertex height is preserved from the original flower.
+            float upperPart = smoothstep(
+                0.30,
+                0.65,
+                flowerHeight01
             );
 
+            float bend = upperPart * upperPart;
 
-        material.userData.flowerWind =
-            shader;
+            // World position was baked into the merged geometry.
+            float phase =
+                flowerWindPosition.x * 0.08 +
+                flowerWindPosition.z * 0.06;
 
-    };
+            float largeWind = sin(time * 2.2 + phase);
+            float smallWind = sin(time * 4.0 + phase * 1.7);
 
+            float wind =
+                largeWind * 0.75 +
+                smallWind * 0.25;
 
-    material.needsUpdate = true;
+            vec3 windOffset = vec3(
+                wind * 0.32 * bend,
+                0.0,
+                wind * 0.11 * bend
+            );
 
-}
+            mvPosition.xyz += (
+                modelViewMatrix * vec4(windOffset, 0.0)
+            ).xyz;
+
+            gl_Position = projectionMatrix * mvPosition;
+            `
+            );
+
+            material.userData.flowerWind = shader;
+        };
+
+        material.customProgramCacheKey = () => "merged-flower-wind-v1";
+        material.needsUpdate = true;
+    }
     // ==================================================
     // LOAD FLOWER GLB
     // ==================================================
@@ -390,71 +257,33 @@ applyWindShader(material, geometry) {
                             match[1];
 
 
-// ==================================================
-// FLOWER MATERIAL
-// ==================================================
+                        const sourceMaterial = object.material;
 
-const sourceMaterial =
-    object.material;
+                        // All nine variations use the same atlas and shared material.
+                        if (!this.flowerMaterial) {
+                            this.flowerMaterial = new THREE.MeshLambertMaterial({
+                                map: sourceMaterial.map || null,
 
+                                color: sourceMaterial.color
+                                    ? sourceMaterial.color.clone()
+                                    : new THREE.Color(0xffffff),
 
-// Use MeshBasicMaterial so the flowers are not
-// affected by lighting and therefore don't become
-// unnaturally dark.
+                                transparent: false,
+                                alphaTest: 0.5,
+                                depthTest: true,
+                                depthWrite: true,
+                                side: THREE.DoubleSide
+                            });
 
-const flowerMaterial =
-    new THREE.MeshLambertMaterial({
+                            this.applyWindShader(this.flowerMaterial);
+                            applyShadowOnly(this.flowerMaterial, 0.45);
+                        }
 
-        map:
-            sourceMaterial.map || null,
-
-        color:
-            sourceMaterial.color
-                ? sourceMaterial.color.clone()
-                : new THREE.Color(0xffffff),
-
-        transparent:
-            false,
-
-        alphaTest:
-            0.5,
-
-        depthTest:
-            true,
-
-        depthWrite:
-            true,
-
-        side:
-            THREE.DoubleSide
-
-    });
-
-this.applyWindShader(
-    flowerMaterial,
-    object.geometry
-);
-
-applyShadowOnly(flowerMaterial, 0.45);
-
-this.flowerModels.set(
-
-    variation,
-
-    {
-
-        geometry:
-            object.geometry,
-
-        material:
-            flowerMaterial,
-
-        matrix:
-            object.matrixWorld.clone()
-
-    }
-
-);
+                        this.flowerModels.set(variation, {
+                            geometry: object.geometry,
+                            material: this.flowerMaterial,
+                            matrix: object.matrixWorld.clone()
+                        });
 
                     }
                 );
@@ -533,10 +362,10 @@ this.flowerModels.set(
         h =
             Math.imul(
                 h ^
-                    Math.imul(
-                        z | 0,
-                        668265263
-                    ),
+                Math.imul(
+                    z | 0,
+                    668265263
+                ),
                 1274126177
             );
 
@@ -563,12 +392,12 @@ this.flowerModels.set(
     // SURFACE SUITABILITY
     // ==================================================
 
-getSurfaceSuitability(
-    x,
-    z,
-    terrain,
-    surfaceData = null
-) {
+    getSurfaceSuitability(
+        x,
+        z,
+        terrain,
+        surfaceData = null
+    ) {
 
         if (
             !this.surfaceSystem
@@ -589,8 +418,8 @@ getSurfaceSuitability(
 
             );
         if (surfaceData) {
-    surfaceData.surface = surface;
-}
+            surfaceData.surface = surface;
+        }
 
         // Flowers prefer relatively flat ground.
 
@@ -669,9 +498,9 @@ getSurfaceSuitability(
 
             terrain:
                 terrainChunk,
-            
-                terrainSystem:
-        terrainChunk.terrain,
+
+            terrainSystem:
+                terrainChunk.terrain,
 
             group,
 
@@ -718,23 +547,12 @@ getSurfaceSuitability(
 
         // Remove old instances.
 
-        for (
-            const mesh
-            of chunk.instancedMeshes
-        ) {
-
-            chunk.group.remove(
-                mesh
-            );
-
-            mesh.dispose?.();
-
+        for (const mesh of chunk.instancedMeshes) {
+            chunk.group.remove(mesh);
+            mesh.geometry?.dispose();
         }
 
-
-        chunk.instancedMeshes =
-            [];
-
+        chunk.instancedMeshes = [];
 
         // ==================================================
         // GRID
@@ -820,19 +638,19 @@ getSurfaceSuitability(
                     );
 
                 const grassDensity =
-    this.distribution.getGrassDensity(
-        worldX,
-        worldZ
-    );
-    const grassAffinity =
-    THREE.MathUtils.smoothstep(
-        grassDensity,
-        0.18,
-        0.50
-    );
-    if (grassAffinity <= 0.01) {
-    continue;
-}
+                    this.distribution.getGrassDensity(
+                        worldX,
+                        worldZ
+                    );
+                const grassAffinity =
+                    THREE.MathUtils.smoothstep(
+                        grassDensity,
+                        0.18,
+                        0.50
+                    );
+                if (grassAffinity <= 0.01) {
+                    continue;
+                }
                 if (
                     density <= 0
                 ) {
@@ -846,15 +664,15 @@ getSurfaceSuitability(
                 // SURFACE
                 // ==================================================
 
-const surfaceData = {};
+                const surfaceData = {};
 
-const suitability =
-    this.getSurfaceSuitability(
-        worldX,
-        worldZ,
-        chunk.terrain,
-        surfaceData
-    );
+                const suitability =
+                    this.getSurfaceSuitability(
+                        worldX,
+                        worldZ,
+                        chunk.terrain,
+                        surfaceData
+                    );
 
 
                 if (
@@ -870,17 +688,17 @@ const suitability =
                 // SPAWN PROBABILITY
                 // ==================================================
 
-               const probability =
-    THREE.MathUtils.clamp(
+                const probability =
+                    THREE.MathUtils.clamp(
 
-        density *
-        suitability *
-        this.flowerDensityMultiplier,
+                        density *
+                        suitability *
+                        this.flowerDensityMultiplier,
 
-        0.0,
-        1.0
+                        0.0,
+                        1.0
 
-    );
+                    );
 
 
                 const random =
@@ -889,12 +707,12 @@ const suitability =
                         Math.floor(
                             worldX * 100
                         ) +
-                            this.seed,
+                        this.seed,
 
                         Math.floor(
                             worldZ * 100
                         ) +
-                            this.seed * 7
+                        this.seed * 7
 
                     );
 
@@ -909,267 +727,267 @@ const suitability =
                 }
 
                 // ==================================================
-// FLOWER CLUSTER
-// ==================================================
+                // FLOWER CLUSTER
+                // ==================================================
 
-const clusterRandom =
-    this.hash2D(
+                const clusterRandom =
+                    this.hash2D(
 
-        Math.floor(
-            worldX * 37
-        ) +
-            this.seed * 41,
+                        Math.floor(
+                            worldX * 37
+                        ) +
+                        this.seed * 41,
 
-        Math.floor(
-            worldZ * 37
-        ) +
-            this.seed * 43
+                        Math.floor(
+                            worldZ * 37
+                        ) +
+                        this.seed * 43
 
-    );
+                    );
 
 
-const clusterCount =
-    this.clusterMin +
-    Math.floor(
+                const clusterCount =
+                    this.clusterMin +
+                    Math.floor(
 
-        clusterRandom *
-        (
-            this.clusterMax -
-            this.clusterMin +
-            1
-        )
+                        clusterRandom *
+                        (
+                            this.clusterMax -
+                            this.clusterMin +
+                            1
+                        )
 
-    );
+                    );
 
 
-// ==================================================
-// CREATE FLOWERS INSIDE CLUSTER
-// ==================================================
+                // ==================================================
+                // CREATE FLOWERS INSIDE CLUSTER
+                // ==================================================
 
-for (
-    let clusterIndex = 0;
-    clusterIndex < clusterCount;
-    clusterIndex++
-) {
+                for (
+                    let clusterIndex = 0;
+                    clusterIndex < clusterCount;
+                    clusterIndex++
+                ) {
 
-    // --------------------------------------------------
-    // Deterministic random values
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Deterministic random values
+                    // --------------------------------------------------
 
-    const randomA =
-        this.hash2D(
+                    const randomA =
+                        this.hash2D(
 
-            Math.floor(
-                worldX * 100
-            ) +
-                this.seed * 47 +
-                clusterIndex * 101,
+                            Math.floor(
+                                worldX * 100
+                            ) +
+                            this.seed * 47 +
+                            clusterIndex * 101,
 
-            Math.floor(
-                worldZ * 100
-            ) +
-                this.seed * 53 +
-                clusterIndex * 137
+                            Math.floor(
+                                worldZ * 100
+                            ) +
+                            this.seed * 53 +
+                            clusterIndex * 137
 
-        );
+                        );
 
 
-    const randomB =
-        this.hash2D(
+                    const randomB =
+                        this.hash2D(
 
-            Math.floor(
-                worldX * 100
-            ) +
-                this.seed * 59 +
-                clusterIndex * 149,
+                            Math.floor(
+                                worldX * 100
+                            ) +
+                            this.seed * 59 +
+                            clusterIndex * 149,
 
-            Math.floor(
-                worldZ * 100
-            ) +
-                this.seed * 61 +
-                clusterIndex * 173
+                            Math.floor(
+                                worldZ * 100
+                            ) +
+                            this.seed * 61 +
+                            clusterIndex * 173
 
-        );
+                        );
 
 
-    // --------------------------------------------------
-    // Position inside cluster
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Position inside cluster
+                    // --------------------------------------------------
 
-    const angle =
-        randomA *
-        Math.PI *
-        2;
+                    const angle =
+                        randomA *
+                        Math.PI *
+                        2;
 
 
-    // sqrt gives a more even circular distribution.
+                    // sqrt gives a more even circular distribution.
 
-    const radius =
-        Math.sqrt(randomB) *
-        this.clusterRadius;
+                    const radius =
+                        Math.sqrt(randomB) *
+                        this.clusterRadius;
 
 
-    const flowerX =
-        worldX +
-        Math.cos(angle) *
-        radius;
+                    const flowerX =
+                        worldX +
+                        Math.cos(angle) *
+                        radius;
 
 
-    const flowerZ =
-        worldZ +
-        Math.sin(angle) *
-        radius;
+                    const flowerZ =
+                        worldZ +
+                        Math.sin(angle) *
+                        radius;
 
 
-    // --------------------------------------------------
-    // Flower variation
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Flower variation
+                    // --------------------------------------------------
 
-    let variation =
-        Math.floor(
+                    let variation =
+                        Math.floor(
 
-            this.hash2D(
+                            this.hash2D(
 
-                Math.floor(
-                    flowerX * 50
-                ) +
-                    this.seed * 13 +
-                    clusterIndex * 17,
+                                Math.floor(
+                                    flowerX * 50
+                                ) +
+                                this.seed * 13 +
+                                clusterIndex * 17,
 
-                Math.floor(
-                    flowerZ * 50
-                ) +
-                    this.seed * 19 +
-                    clusterIndex * 23
+                                Math.floor(
+                                    flowerZ * 50
+                                ) +
+                                this.seed * 19 +
+                                clusterIndex * 23
 
-            ) * 9
+                            ) * 9
 
-        );
+                        );
 
 
-    // Avoid immediate repetition.
+                    // Avoid immediate repetition.
 
-    if (
-        variation ===
-        lastFlower
-    ) {
+                    if (
+                        variation ===
+                        lastFlower
+                    ) {
 
-        variation =
-            (
-                variation +
-                1 +
-                Math.floor(
-                    randomA * 8
-                )
-            ) % 9;
+                        variation =
+                            (
+                                variation +
+                                1 +
+                                Math.floor(
+                                    randomA * 8
+                                )
+                            ) % 9;
 
-    }
+                    }
 
 
-    lastFlower =
-        variation;
+                    lastFlower =
+                        variation;
 
 
-    const flowerName =
-        `0${variation + 1}`;
+                    const flowerName =
+                        `0${variation + 1}`;
 
 
-    // --------------------------------------------------
-    // Terrain height
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Terrain height
+                    // --------------------------------------------------
 
-    const flowerY =
-        chunk.terrainSystem
-            .worldGenerator
-            .getHeight(
+                    const flowerY =
+                        chunk.terrainSystem
+                            .worldGenerator
+                            .getHeight(
 
-                flowerX,
-                flowerZ
+                                flowerX,
+                                flowerZ
 
-            );
+                            );
 
 
-    // --------------------------------------------------
-    // Rotation
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Rotation
+                    // --------------------------------------------------
 
-    const rotation =
-        this.hash2D(
+                    const rotation =
+                        this.hash2D(
 
-            Math.floor(
-                flowerX * 30
-            ) +
-                this.seed * 67 +
-                clusterIndex * 71,
+                            Math.floor(
+                                flowerX * 30
+                            ) +
+                            this.seed * 67 +
+                            clusterIndex * 71,
 
-            Math.floor(
-                flowerZ * 30
-            ) +
-                this.seed * 73 +
-                clusterIndex * 79
+                            Math.floor(
+                                flowerZ * 30
+                            ) +
+                            this.seed * 73 +
+                            clusterIndex * 79
 
-        ) *
-        Math.PI *
-        2;
+                        ) *
+                        Math.PI *
+                        2;
 
 
-    // --------------------------------------------------
-    // Scale
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Scale
+                    // --------------------------------------------------
 
-    const scaleRandom =
-        this.hash2D(
+                    const scaleRandom =
+                        this.hash2D(
 
-            Math.floor(
-                flowerX * 40
-            ) +
-                this.seed * 83 +
-                clusterIndex * 89,
+                            Math.floor(
+                                flowerX * 40
+                            ) +
+                            this.seed * 83 +
+                            clusterIndex * 89,
 
-            Math.floor(
-                flowerZ * 40
-            ) +
-                this.seed * 97 +
-                clusterIndex * 103
+                            Math.floor(
+                                flowerZ * 40
+                            ) +
+                            this.seed * 97 +
+                            clusterIndex * 103
 
-        );
+                        );
 
 
-    const scale =
-        THREE.MathUtils.lerp(
+                    const scale =
+                        THREE.MathUtils.lerp(
 
-            this.minScale,
-            this.maxScale,
+                            this.minScale,
+                            this.maxScale,
 
-            scaleRandom
+                            scaleRandom
 
-        );
+                        );
 
 
-    // --------------------------------------------------
-    // Store instance
-    // --------------------------------------------------
+                    // --------------------------------------------------
+                    // Store instance
+                    // --------------------------------------------------
 
-    positionsByFlower
-        .get(flowerName)
-        .push({
+                    positionsByFlower
+                        .get(flowerName)
+                        .push({
 
-            x:
-                flowerX,
+                            x:
+                                flowerX,
 
-            y:
-                flowerY,
+                            y:
+                                flowerY,
 
-            z:
-                flowerZ,
+                            z:
+                                flowerZ,
 
-            rotation,
+                            rotation,
 
-            scale
+                            scale
 
-        });
+                        });
 
-}
+                }
                 // ==================================================
                 // FLOWER VARIATION
                 // ==================================================
@@ -1181,12 +999,12 @@ for (
                             Math.floor(
                                 worldX * 50
                             ) +
-                                this.seed * 13,
+                            this.seed * 13,
 
                             Math.floor(
                                 worldZ * 50
                             ) +
-                                this.seed * 17
+                            this.seed * 17
 
                         ) * 9
                     );
@@ -1223,8 +1041,8 @@ for (
                 // TERRAIN HEIGHT
                 // ==================================================
 
-const y =
-    surfaceData.surface.height;
+                const y =
+                    surfaceData.surface.height;
 
 
                 // ==================================================
@@ -1237,12 +1055,12 @@ const y =
                         Math.floor(
                             worldX * 30
                         ) +
-                            this.seed * 23,
+                        this.seed * 23,
 
                         Math.floor(
                             worldZ * 30
                         ) +
-                            this.seed * 29
+                        this.seed * 29
 
                     ) *
                     Math.PI *
@@ -1255,12 +1073,12 @@ const y =
                         Math.floor(
                             worldX * 40
                         ) +
-                            this.seed * 31,
+                        this.seed * 31,
 
                         Math.floor(
                             worldZ * 40
                         ) +
-                            this.seed * 37
+                        this.seed * 37
 
                     );
 
@@ -1300,181 +1118,170 @@ const y =
 
 
         // ==================================================
-        // CREATE INSTANCED MESHES
+        // MERGE ALL FLOWER VARIATIONS INTO ONE CHUNK MESH
         // ==================================================
 
-        for (
-            const [
-                variation,
-                instances
-            ]
-            of positionsByFlower
-        ) {
+        const geometries = [];
 
-            if (
-                instances.length === 0
-            ) {
+        for (const [variation, instances] of positionsByFlower) {
+            if (instances.length === 0) continue;
 
-                continue;
+            const model = this.flowerModels.get(variation);
+            if (!model) continue;
 
+            const sourceGeometry = model.geometry;
+
+            if (!sourceGeometry.boundingBox) {
+                sourceGeometry.computeBoundingBox();
             }
 
+            const minY = sourceGeometry.boundingBox.min.y;
+            const height = Math.max(
+                sourceGeometry.boundingBox.max.y - minY,
+                0.001
+            );
 
-            const model =
-                this.flowerModels.get(
-                    variation
+            const sourcePosition = sourceGeometry.getAttribute("position");
+
+            for (const instance of instances) {
+                // Each placed flower gets its own geometry copy.
+                const geometry = sourceGeometry.clone();
+
+                // Preserve the original variation's root-to-tip ratio.
+                const heightData = new Float32Array(sourcePosition.count);
+
+                for (let vertex = 0; vertex < sourcePosition.count; vertex++) {
+                    heightData[vertex] = THREE.MathUtils.clamp(
+                        (sourcePosition.getY(vertex) - minY) / height,
+                        0,
+                        1
+                    );
+                }
+
+                geometry.setAttribute(
+                    "flowerHeight01",
+                    new THREE.BufferAttribute(heightData, 1)
                 );
 
-
-            if (!model) {
-                continue;
-            }
-
-
-            const mesh =
-                new THREE.InstancedMesh(
-
-                    model.geometry,
-
-                    model.material,
-
-                    instances.length
-
-                );
-
-
-            mesh.name =
-                `Flower_${variation}`;
-
-
-            mesh.castShadow =
-                false;
-
-            mesh.receiveShadow =
-                true;
-
-
-            for (
-                let i = 0;
-                i < instances.length;
-                i++
-            ) {
-
-                const instance =
-                    instances[i];
-
-
+                // Recreate the exact transform used by the old InstancedMesh.
                 this.tempPosition.set(
-
                     instance.x,
                     instance.y,
                     instance.z
-
                 );
-
 
                 this.tempQuaternion.setFromAxisAngle(
-
-                    new THREE.Vector3(
-                        0,
-                        1,
-                        0
-                    ),
-
+                    new THREE.Vector3(0, 1, 0),
                     instance.rotation
-
                 );
 
-
                 this.tempScale.set(
-
                     instance.scale,
                     instance.scale,
                     instance.scale
-
                 );
-
 
                 this.tempMatrix.compose(
-
                     this.tempPosition,
-
                     this.tempQuaternion,
-
                     this.tempScale
-
                 );
 
+                // Retain the original transform stored in the GLB.
+                this.tempMatrix.multiply(model.matrix);
 
-                // Preserve the original GLB transform.
+                // Bake placement and model transforms into the vertices.
+                geometry.applyMatrix4(this.tempMatrix);
 
-                this.tempMatrix.multiply(
-                    model.matrix
+                // Store the baked position for spatially varied wind.
+                const bakedPosition = geometry.getAttribute("position");
+                const windPositionData = new Float32Array(
+                    bakedPosition.count * 3
                 );
 
+                for (let vertex = 0; vertex < bakedPosition.count; vertex++) {
+                    const offset = vertex * 3;
 
-                mesh.setMatrixAt(
+                    windPositionData[offset] = bakedPosition.getX(vertex);
+                    windPositionData[offset + 1] = bakedPosition.getY(vertex);
+                    windPositionData[offset + 2] = bakedPosition.getZ(vertex);
+                }
 
-                    i,
-
-                    this.tempMatrix
-
+                geometry.setAttribute(
+                    "flowerWindPosition",
+                    new THREE.BufferAttribute(windPositionData, 3)
                 );
 
+                geometries.push(geometry);
             }
-
-
-            mesh.instanceMatrix.needsUpdate =
-                true;
-
-
-            mesh.computeBoundingSphere();
-
-
-            chunk.group.add(
-                mesh
-            );
-
-
-            chunk.instancedMeshes.push(
-                mesh
-            );
-
         }
 
-    }
-// ==================================================
-// UPDATE WIND
-// ==================================================
-
-update(
-    delta
-) {
-
-    for (
-        const model
-        of this.flowerModels.values()
-    ) {
-
-        const windShader =
-            model.material
-                .userData
-                ?.flowerWind;
-
-
-        if (
-            windShader
-        ) {
-
-            windShader.uniforms
-                .time
-                .value += delta;
-
+        if (geometries.length === 0) {
+            return;
         }
 
-    }
+        // mergeGeometries requires consistent indexing across its inputs.
+        const hasIndexedGeometry = geometries.some(
+            geometry => geometry.index !== null
+        );
+        const hasNonIndexedGeometry = geometries.some(
+            geometry => geometry.index === null
+        );
 
-}
+        if (hasIndexedGeometry && hasNonIndexedGeometry) {
+            for (let i = 0; i < geometries.length; i++) {
+                if (geometries[i].index !== null) {
+                    const nonIndexed = geometries[i].toNonIndexed();
+                    geometries[i].dispose();
+                    geometries[i] = nonIndexed;
+                }
+            }
+        }
+
+        let mergedGeometry = null;
+
+        try {
+            mergedGeometry = mergeGeometries(geometries, false);
+        } finally {
+            // The merged geometry owns its own buffers.
+            for (const geometry of geometries) {
+                geometry.dispose();
+            }
+        }
+
+        if (!mergedGeometry) {
+            console.error(
+                `FlowerSystem: Could not merge flower geometry for chunk ${chunk.x}, ${chunk.z}.`
+            );
+            return;
+        }
+
+        mergedGeometry.computeBoundingBox();
+        mergedGeometry.computeBoundingSphere();
+
+        const mesh = new THREE.Mesh(
+            mergedGeometry,
+            this.flowerMaterial
+        );
+
+        mesh.name = `Flowers_${chunk.x},${chunk.z}`;
+        mesh.castShadow = false;
+        mesh.receiveShadow = true;
+
+        chunk.group.add(mesh);
+        chunk.instancedMeshes.push(mesh);
+    }
+    // ==================================================
+    // UPDATE WIND
+    // ==================================================
+
+    update(delta) {
+        const windShader = this.flowerMaterial?.userData?.flowerWind;
+
+        if (windShader) {
+            windShader.uniforms.time.value += delta;
+        }
+    }
 
     // ==================================================
     // UNREGISTER CHUNK
@@ -1502,26 +1309,13 @@ update(
         }
 
 
-        for (
-            const mesh
-            of chunk.instancedMeshes
-        ) {
-
-            chunk.group.remove(
-                mesh
-            );
-
+        for (const mesh of chunk.instancedMeshes) {
+            chunk.group.remove(mesh);
+            mesh.geometry?.dispose();
         }
 
-
-        this.scene.remove(
-            chunk.group
-        );
-
-
-        this.chunks.delete(
-            key
-        );
+        this.scene.remove(chunk.group);
+        this.chunks.delete(key);
 
     }
 
@@ -1537,17 +1331,10 @@ update(
             of this.chunks.values()
         ) {
 
-            for (
-                const mesh
-                of chunk.instancedMeshes
-            ) {
-
-                chunk.group.remove(
-                    mesh
-                );
-
+            for (const mesh of chunk.instancedMeshes) {
+                chunk.group.remove(mesh);
+                mesh.geometry?.dispose();
             }
-
 
             this.scene.remove(
                 chunk.group
