@@ -520,7 +520,30 @@ const surfaceNoise =
             1.0 -
             rock;
 
+            // ==================================================
+// WATER / SHORE
+// ==================================================
+//
+// Gravel replaces grass and dirt in and near water, so
+// grass, flowers and trees all stay out of the water.
+//
 
+const worldGenerator = terrain.worldGenerator ?? terrain;
+
+const seaLevel = worldGenerator.getSeaLevel
+    ? worldGenerator.getSeaLevel()
+    : -Infinity;
+
+const depth = seaLevel - height;          // > 0 means underwater
+
+const wet = THREE.MathUtils.smoothstep(depth, -0.35, 0.25);
+
+if (wet > 0) {
+
+    grass *= 1.0 - wet;
+    dirt *= 1.0 - wet;
+    gravel = gravel * (1.0 - wet) + wet * (1.0 - rock);
+}
         // ==================================================
         // NORMALIZE
         // ==================================================

@@ -1,15 +1,23 @@
-import * as THREE from "three";
-
 import {
     createNoise2D
 } from "../node_modules/simplex-noise/dist/esm/simplex-noise.js";
 
 
-/*
-====================================================================
-SEEDED RANDOM GENERATOR
-====================================================================
-*/
+// ============================================================
+// PROP DISTRIBUTION SYSTEM
+// ============================================================
+//
+// Same output values as before. Differences:
+//  - No dependency on three.js, so this file can also be
+//    imported inside a Web Worker.
+//  - Per-type constants (scales, offsets, remap settings) are
+//    precomputed once instead of rebuilt on every call.
+//  - No object allocation per density query.
+//
+// If you change largeScale / mediumScale / smallScale /
+// layerWeights / remapSettings at runtime, call rebuildLayers().
+// ============================================================
+
 
 function mulberry32(seed) {
 
@@ -17,30 +25,29 @@ function mulberry32(seed) {
 
         let t = seed += 0x6D2B79F5;
 
-        t = Math.imul(
-            t ^ (t >>> 15),
-            t | 1
-        );
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
 
-        t ^= t + Math.imul(
-            t ^ (t >>> 7),
-            t | 61
-        );
-
-        return (
-            (t ^ (t >>> 14)) >>> 0
-        ) / 4294967296;
-
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-
 }
 
 
-/*
-====================================================================
-PROP DISTRIBUTION SYSTEM
-====================================================================
-*/
+function clamp01(value) {
+
+    return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+
+
+// Per-type noise offsets (unchanged from the original)
+const TYPE_OFFSETS = {
+    grass: 100,
+    tree: 200,
+    rock: 300,
+    flower: 400,
+    bush: 500
+};
+
 
 export default class PropDistributionSystem {
 
@@ -50,737 +57,290 @@ export default class PropDistributionSystem {
 
         this.seed = seed;
 
-
-        /*
-        ------------------------------------------------------------
-        SEEDED SIMPLEX NOISE
-        ------------------------------------------------------------
-        */
-
-        const random = mulberry32(this.seed);
-
-        this.noise2D = createNoise2D(random);
+        this.noise2D = createNoise2D(mulberry32(this.seed));
 
 
-        /*
-        ------------------------------------------------------------
-        NOISE SCALES
-        ------------------------------------------------------------
-
-        Large:
-            Large environmental regions.
-
-        Medium:
-            Patches inside those regions.
-
-        Small:
-            Local variation.
-        */
-
+        // Large: environmental regions
+        // Medium: patches inside them
+        // Small: local variation
         this.largeScale = {
-
             grass: 0.004,
             tree: 0.003,
             rock: 0.006,
             flower: 0.005,
             bush: 0.004
-
         };
 
-
         this.mediumScale = {
-
             grass: 0.018,
             tree: 0.012,
             rock: 0.025,
             flower: 0.022,
             bush: 0.016
-
         };
 
-
         this.smallScale = {
-
             grass: 0.060,
             tree: 0.045,
             rock: 0.080,
             flower: 0.070,
             bush: 0.055
-
         };
 
-
-        /*
-        ------------------------------------------------------------
-        LAYER WEIGHTS
-        ------------------------------------------------------------
-        */
-
         this.layerWeights = {
-
             large: 0.55,
             medium: 0.30,
             small: 0.15
-
         };
 
+        // inputMin: below it density is 0
+        // inputMax: above it density is 1
+        // power:    > 1 concentrates, < 1 spreads
+        this.remapSettings = {
 
-        /*
-        ------------------------------------------------------------
-        DISTRIBUTION REMAPPING
-        ------------------------------------------------------------
+            grass: { inputMin: 0.34, inputMax: 0.66, power: 0.90 },
+            tree: { inputMin: 0.42, inputMax: 0.68, power: 1.35 },
+            rock: { inputMin: 0.34, inputMax: 0.62, power: 1.05 },
+            flower: { inputMin: 0.36, inputMax: 0.64, power: 1.05 },
+            bush: { inputMin: 0.35, inputMax: 0.64, power: 1.05 }
+        };
 
-        inputMin:
-            Below this value the density becomes 0.
-
-        inputMax:
-            Above this value the density becomes 1.
-
-        power:
-            Controls how strongly the high-density areas are
-            concentrated.
-
-        These values are intentionally different for each prop.
-        */
-
-this.remapSettings = {
-
-    grass: {
-        inputMin: 0.34,
-        inputMax: 0.66,
-        power: 0.90
-    },
-
-tree: {
-    inputMin: 0.42,
-    inputMax: 0.68,
-    power: 1.35
-},
-
-rock: {
-    inputMin: 0.34,
-    inputMax: 0.62,
-    power: 1.05
-},
-
-    flower: {
-        inputMin: 0.36,
-        inputMax: 0.64,
-        power: 1.05
-    },
-
-    bush: {
-        inputMin: 0.35,
-        inputMax: 0.64,
-        power: 1.05
-    }
-
-};
-
+        this.rebuildLayers();
     }
 
 
-    /*
-    ================================================================
-    RAW SIMPLEX SAMPLE
-    ================================================================
-    */
+    // ========================================================
+    // PRECOMPUTED LAYERS
+    // ========================================================
 
-    sampleNoise(
-        x,
-        z,
-        scale,
-        offsetX = 0,
-        offsetZ = 0
-    ) {
+    rebuildLayers() {
 
-        const value = this.noise2D(
-            x * scale + offsetX,
-            z * scale + offsetZ
-        );
+        this.layers = {};
 
+        for (const type of Object.keys(TYPE_OFFSETS)) {
 
-        /*
-        Simplex:
+            const offset = TYPE_OFFSETS[type];
+            const remap = this.remapSettings[type];
 
-            -1 → +1
+            this.layers[type] = {
 
-        Convert:
+                largeScale: this.largeScale[type],
+                mediumScale: this.mediumScale[type],
+                smallScale: this.smallScale[type],
 
-             0 → 1
-        */
+                // offsets for the three noise layers
+                lx: offset,
+                lz: offset * 0.37,
 
-        return value * 0.5 + 0.5;
+                mx: offset + 17.31,
+                mz: offset * 0.61,
 
+                sx: offset + 43.72,
+                sz: offset * 0.83,
+
+                wl: this.layerWeights.large,
+                wm: this.layerWeights.medium,
+                ws: this.layerWeights.small,
+
+                min: remap.inputMin,
+                range: remap.inputMax - remap.inputMin,
+                power: remap.power
+            };
+        }
     }
 
 
-    /*
-    ================================================================
-    RAW MULTI-SCALE FIELD
-    ================================================================
-    */
+    // ========================================================
+    // CORE FIELD
+    // ========================================================
 
-    sampleRawField(
-        x,
-        z,
-        scales,
-        offset
-    ) {
+    rawField(layer, x, z) {
 
-        const large = this.sampleNoise(
-            x,
-            z,
-            scales.large,
-            offset,
-            offset * 0.37
+        const noise = this.noise2D;
+
+        const large =
+            noise(
+                x * layer.largeScale + layer.lx,
+                z * layer.largeScale + layer.lz
+            ) * 0.5 + 0.5;
+
+        const medium =
+            noise(
+                x * layer.mediumScale + layer.mx,
+                z * layer.mediumScale + layer.mz
+            ) * 0.5 + 0.5;
+
+        const small =
+            noise(
+                x * layer.smallScale + layer.sx,
+                z * layer.smallScale + layer.sz
+            ) * 0.5 + 0.5;
+
+        return clamp01(
+            large * layer.wl +
+            medium * layer.wm +
+            small * layer.ws
         );
+    }
 
 
-        const medium = this.sampleNoise(
-            x,
-            z,
-            scales.medium,
-            offset + 17.31,
-            offset * 0.61
-        );
+    remapField(layer, value) {
+
+        let result = clamp01((value - layer.min) / layer.range);
+
+        // Smooth the transition
+        result = result * result * (3.0 - 2.0 * result);
+
+        return layer.power === 1.0
+            ? result
+            : Math.pow(result, layer.power);
+    }
 
 
-        const small = this.sampleNoise(
-            x,
-            z,
-            scales.small,
-            offset + 43.72,
-            offset * 0.83
-        );
+    field(layer, x, z) {
+
+        return this.remapField(layer, this.rawField(layer, x, z));
+    }
 
 
-        const value =
+    // ========================================================
+    // COMPATIBILITY HELPERS (same behavior as before)
+    // ========================================================
+
+    sampleNoise(x, z, scale, offsetX = 0, offsetZ = 0) {
+
+        return this.noise2D(x * scale + offsetX, z * scale + offsetZ) * 0.5 + 0.5;
+    }
+
+
+    sampleRawField(x, z, scales, offset) {
+
+        const large = this.sampleNoise(x, z, scales.large, offset, offset * 0.37);
+        const medium = this.sampleNoise(x, z, scales.medium, offset + 17.31, offset * 0.61);
+        const small = this.sampleNoise(x, z, scales.small, offset + 43.72, offset * 0.83);
+
+        return clamp01(
             large * this.layerWeights.large +
             medium * this.layerWeights.medium +
-            small * this.layerWeights.small;
-
-
-        return THREE.MathUtils.clamp(
-            value,
-            0.0,
-            1.0
+            small * this.layerWeights.small
         );
-
     }
 
 
-    /*
-    ================================================================
-    CONTRAST / DISTRIBUTION REMAP
-    ================================================================
-    */
+    remapDensity(value, inputMin, inputMax, power = 1.0) {
 
-    remapDensity(
-        value,
-        inputMin,
-        inputMax,
-        power = 1.0
-    ) {
+        let result = clamp01((value - inputMin) / (inputMax - inputMin));
 
-        /*
-        Convert the selected range into:
+        result = result * result * (3.0 - 2.0 * result);
 
-            0 → 1
-        */
-
-        let result =
-            (value - inputMin) /
-            (inputMax - inputMin);
-
-
-        result = THREE.MathUtils.clamp(
-            result,
-            0.0,
-            1.0
-        );
-
-
-        /*
-        Smooth the transition.
-
-        This prevents harsh edges between
-        high and low density areas.
-        */
-
-        result =
-            result *
-            result *
-            (3.0 - 2.0 * result);
-
-
-        /*
-        Shape the density.
-
-        power < 1:
-            More widespread.
-
-        power > 1:
-            More concentrated.
-        */
-
-        result = Math.pow(
-            result,
-            power
-        );
-
-
-        return result;
-
+        return Math.pow(result, power);
     }
 
 
-    /*
-    ================================================================
-    FINAL FIELD
-    ================================================================
-    */
-
-    sampleField(
-        x,
-        z,
-        scales,
-        offset,
-        type
-    ) {
-
-        const raw = this.sampleRawField(
-            x,
-            z,
-            scales,
-            offset
-        );
-
-
-        const settings =
-            this.remapSettings[type];
-
-
-        if (!settings) {
-            return raw;
-        }
-
-
-        return this.remapDensity(
-            raw,
-            settings.inputMin,
-            settings.inputMax,
-            settings.power
-        );
-
-    }
-
-
-    /*
-    ================================================================
-    GRASS
-    ================================================================
-    */
+    // ========================================================
+    // GRASS
+    // ========================================================
 
     getGrassDensity(x, z) {
 
-        return this.sampleField(
-            x,
-            z,
-            {
-                large: this.largeScale.grass,
-                medium: this.mediumScale.grass,
-                small: this.smallScale.grass
-            },
-            100,
-            "grass"
-        );
-
+        return this.field(this.layers.grass, x, z);
     }
 
 
-    /*
-    ================================================================
-    TREES
-    ================================================================
-    */
+    // ========================================================
+    // TREES
+    // ========================================================
+    //
+    // Normal environmental distribution plus very sparse
+    // low-frequency peaks (occasional isolated trees).
+    //
 
-/*
-====================================================================
-TREES
-====================================================================
+    getTreeDensity(x, z) {
 
-Trees have:
+        const baseDensity = this.field(this.layers.tree, x, z);
 
-    1. Normal environmental tree distribution
-    2. Very sparse low-frequency peaks
+        const sparseTree = this.sampleNoise(x, z, 0.055, 1200, 743.2);
 
-The sparse field creates occasional isolated trees
-without filling the entire map.
-====================================================================
-*/
+        let sparsePeak = clamp01((sparseTree - 0.72) / 0.28);
 
-getTreeDensity(x, z) {
+        sparsePeak = sparsePeak * sparsePeak * (3.0 - 2.0 * sparsePeak);
 
-    const baseDensity =
-        this.sampleField(
-            x,
-            z,
-            {
-                large: this.largeScale.tree,
-                medium: this.mediumScale.tree,
-                small: this.smallScale.tree
-            },
-            200,
-            "tree"
-        );
+        sparsePeak *= 0.95;
+
+        return clamp01(Math.max(baseDensity, sparsePeak));
+    }
 
 
-    /*
-    ------------------------------------------------------------
-    SPARSE TREE FIELD
-    ------------------------------------------------------------
+    // ========================================================
+    // ROCKS
+    // ========================================================
+    //
+    // Normal distribution plus sparse localized clusters.
+    //
 
-    Extremely low frequency.
+    getRockDensity(x, z) {
 
-    Most of the map receives almost nothing from this field.
-    Only strong peaks contribute meaningful density.
-    */
+        const baseDensity = this.field(this.layers.rock, x, z);
 
-    const sparseTree =
-        this.sampleNoise(
-            x,
-            z,
-            0.055,
-            1200,
-            743.2
-        );
+        const sparseRock = this.sampleNoise(x, z, 0.085, 1500, 421.7);
 
+        let sparsePeak = clamp01((sparseRock - 0.67) / 0.33);
 
-    /*
-    ------------------------------------------------------------
-    ISOLATE THE HIGH PEAKS
-    ------------------------------------------------------------
+        sparsePeak = sparsePeak * sparsePeak * (3.0 - 2.0 * sparsePeak);
 
-    Values below ~0.72 are suppressed.
+        sparsePeak *= 0.90;
 
-    This means the sparse field behaves more like
-    occasional points instead of another broad biome.
-    */
-
-    let sparsePeak =
-        THREE.MathUtils.clamp(
-            (sparseTree - 0.72) /
-            0.28,
-            0.0,
-            1.0
-        );
+        return clamp01(Math.max(baseDensity, sparsePeak));
+    }
 
 
-    /*
-    Smooth the peak.
-    */
-
-    sparsePeak =
-        sparsePeak *
-        sparsePeak *
-        (3.0 - 2.0 * sparsePeak);
-
-
-    /*
-    Make the isolated trees strong enough
-    to actually pass the spawning probability.
-    */
-
-    sparsePeak *= 0.95;
-
-
-    /*
-    ------------------------------------------------------------
-    COMBINE
-    ------------------------------------------------------------
-    */
-
-    return THREE.MathUtils.clamp(
-        Math.max(
-            baseDensity,
-            sparsePeak
-        ),
-        0.0,
-        1.0
-    );
-
-}
-    /*
-    ================================================================
-    ROCKS
-    ================================================================
-    */
-
-/*
-====================================================================
-ROCKS
-====================================================================
-
-Rocks have:
-
-    1. Normal rock distribution
-    2. Sparse localized clusters
-
-The sparse field is slightly higher frequency than
-the tree field so nearby peaks can form small groups.
-====================================================================
-*/
-
-getRockDensity(x, z) {
-
-    const baseDensity =
-        this.sampleField(
-            x,
-            z,
-            {
-                large: this.largeScale.rock,
-                medium: this.mediumScale.rock,
-                small: this.smallScale.rock
-            },
-            300,
-            "rock"
-        );
-
-
-    /*
-    ------------------------------------------------------------
-    SPARSE ROCK FIELD
-    ------------------------------------------------------------
-    */
-
-    const sparseRock =
-        this.sampleNoise(
-            x,
-            z,
-            0.085,
-            1500,
-            421.7
-        );
-
-
-    /*
-    ------------------------------------------------------------
-    CREATE LOCALIZED PEAKS
-    ------------------------------------------------------------
-
-    Only the upper portion of the noise becomes
-    a meaningful rock cluster.
-    */
-
-    let sparsePeak =
-        THREE.MathUtils.clamp(
-            (sparseRock - 0.67) /
-            0.33,
-            0.0,
-            1.0
-        );
-
-
-    /*
-    Smooth the cluster edges.
-    */
-
-    sparsePeak =
-        sparsePeak *
-        sparsePeak *
-        (3.0 - 2.0 * sparsePeak);
-
-
-    /*
-    Keep the clusters sparse.
-    */
-
-    sparsePeak *= 0.90;
-
-
-    /*
-    ------------------------------------------------------------
-    COMBINE
-    ------------------------------------------------------------
-    */
-
-    return THREE.MathUtils.clamp(
-        Math.max(
-            baseDensity,
-            sparsePeak
-        ),
-        0.0,
-        1.0
-    );
-
-}
-
-    /*
-    ================================================================
-    FLOWERS
-    ================================================================
-    */
+    // ========================================================
+    // FLOWERS
+    // ========================================================
 
     getFlowerDensity(x, z) {
 
-        return this.sampleField(
-            x,
-            z,
-            {
-                large: this.largeScale.flower,
-                medium: this.mediumScale.flower,
-                small: this.smallScale.flower
-            },
-            400,
-            "flower"
-        );
-
+        return this.field(this.layers.flower, x, z);
     }
 
 
-    /*
-    ================================================================
-    BUSHES
-    ================================================================
-    */
+    // ========================================================
+    // BUSHES
+    // ========================================================
 
     getBushDensity(x, z) {
 
-        return this.sampleField(
-            x,
-            z,
-            {
-                large: this.largeScale.bush,
-                medium: this.mediumScale.bush,
-                small: this.smallScale.bush
-            },
-            500,
-            "bush"
-        );
-
+        return this.field(this.layers.bush, x, z);
     }
 
 
-    /*
-    ================================================================
-    RAW DENSITY
-    ================================================================
-    */
+    // ========================================================
+    // RAW DENSITY
+    // ========================================================
 
     getRawDensity(type, x, z) {
 
-        switch (type) {
+        const layer = this.layers[type];
 
-            case "grass":
-
-                return this.sampleRawField(
-                    x,
-                    z,
-                    {
-                        large: this.largeScale.grass,
-                        medium: this.mediumScale.grass,
-                        small: this.smallScale.grass
-                    },
-                    100
-                );
-
-
-            case "tree":
-
-                return this.sampleRawField(
-                    x,
-                    z,
-                    {
-                        large: this.largeScale.tree,
-                        medium: this.mediumScale.tree,
-                        small: this.smallScale.tree
-                    },
-                    200
-                );
-
-
-            case "rock":
-
-                return this.sampleRawField(
-                    x,
-                    z,
-                    {
-                        large: this.largeScale.rock,
-                        medium: this.mediumScale.rock,
-                        small: this.smallScale.rock
-                    },
-                    300
-                );
-
-
-            case "flower":
-
-                return this.sampleRawField(
-                    x,
-                    z,
-                    {
-                        large: this.largeScale.flower,
-                        medium: this.mediumScale.flower,
-                        small: this.smallScale.flower
-                    },
-                    400
-                );
-
-
-            case "bush":
-
-                return this.sampleRawField(
-                    x,
-                    z,
-                    {
-                        large: this.largeScale.bush,
-                        medium: this.mediumScale.bush,
-                        small: this.smallScale.bush
-                    },
-                    500
-                );
-
-
-            default:
-
-                return 0.0;
-
-        }
-
+        return layer ? this.rawField(layer, x, z) : 0.0;
     }
 
 
-    /*
-    ================================================================
-    GENERIC FINAL ACCESS
-    ================================================================
-    */
+    // ========================================================
+    // GENERIC ACCESS
+    // ========================================================
 
     getDensity(type, x, z) {
 
         switch (type) {
 
-            case "grass":
-                return this.getGrassDensity(x, z);
+            case "grass": return this.getGrassDensity(x, z);
+            case "tree": return this.getTreeDensity(x, z);
+            case "rock": return this.getRockDensity(x, z);
+            case "flower": return this.getFlowerDensity(x, z);
+            case "bush": return this.getBushDensity(x, z);
 
-            case "tree":
-                return this.getTreeDensity(x, z);
-
-            case "rock":
-                return this.getRockDensity(x, z);
-
-            case "flower":
-                return this.getFlowerDensity(x, z);
-
-            case "bush":
-                return this.getBushDensity(x, z);
-
-            default:
-                return 0.0;
-
+            default: return 0.0;
         }
-
     }
-
 }

@@ -4,7 +4,7 @@ import {
     applyGrassShader
 } from "./GrassShader.js";
 
-
+import { PlacementRegistry } from "../world/PlacementRegistry.js";
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -38,121 +38,7 @@ const GRASS_EXCLUSION_RADIUS = 0.15;
 // This is deliberately finer than the existing
 // distribution grid so tree/rock/bush boundaries
 // do not become obvious square holes.
-const EXCLUSION_FIELD_RESOLUTION = 128;
 
-
-function sampleExclusionField(
-    field,
-    worldX,
-    worldZ
-) {
-
-    if (!field) {
-        return 0;
-    }
-
-    const resolution =
-        field.resolution;
-
-    const gridSize =
-        resolution + 1;
-
-    const fx =
-        (
-            worldX -
-            field.minX
-        ) /
-        field.step;
-
-    const fz =
-        (
-            worldZ -
-            field.minZ
-        ) /
-        field.step;
-
-    if (
-        fx < 0 ||
-        fz < 0 ||
-        fx > resolution ||
-        fz > resolution
-    ) {
-
-        return 0;
-
-    }
-
-    const x0 =
-        Math.min(
-            resolution - 1,
-            Math.max(
-                0,
-                Math.floor(fx)
-            )
-        );
-
-    const z0 =
-        Math.min(
-            resolution - 1,
-            Math.max(
-                0,
-                Math.floor(fz)
-            )
-        );
-
-    const x1 =
-        Math.min(
-            resolution,
-            x0 + 1
-        );
-
-    const z1 =
-        Math.min(
-            resolution,
-            z0 + 1
-        );
-
-    const tx =
-        fx - x0;
-
-    const tz =
-        fz - z0;
-
-    const i00 =
-        z0 * gridSize + x0;
-
-    const i10 =
-        z0 * gridSize + x1;
-
-    const i01 =
-        z1 * gridSize + x0;
-
-    const i11 =
-        z1 * gridSize + x1;
-
-    const top =
-        field.data[i00] +
-        (
-            field.data[i10] -
-            field.data[i00]
-        ) * tx;
-
-    const bottom =
-        field.data[i01] +
-        (
-            field.data[i11] -
-            field.data[i01]
-        ) * tx;
-
-    return (
-        top +
-        (
-            bottom -
-            top
-        ) * tz
-    );
-
-}
 export class GrassSystem
     extends THREE.Object3D {
 
@@ -682,39 +568,23 @@ export class GrassSystem
         const cellTotal = cells * cells;
         const cellSize = terrain.size / cells;
         const half = terrain.size * 0.5;
-
         // --------------------------------------------------
-        // BUILD EXCLUSION FIELD
+        // COLLECT OBSTACLES FOR GRASS EXCLUSION
         // --------------------------------------------------
 
-        const exclusionField =
-            registry
-                ? registry.buildExclusionField({
+        const obstacles = registry
+            ? registry.collectObstacles(
+                terrain.worldX - half,
+                terrain.worldX + half,
+                terrain.worldZ - half,
+                terrain.worldZ + half,
+                BLOCKING_TYPES,
+                GRASS_EXCLUSION_RADIUS
+            )
+            : null;
 
-                    minX:
-                        terrain.worldX -
-                        half,
-
-                    minZ:
-                        terrain.worldZ -
-                        half,
-
-                    size:
-                        terrain.size,
-
-                    resolution:
-                        EXCLUSION_FIELD_RESOLUTION,
-
-                    blockedTypes:
-                        BLOCKING_TYPES,
-
-                    radiusPadding:
-                        GRASS_EXCLUSION_RADIUS
-
-                })
-                : null;
-
-
+        const hasObstacles =
+            obstacles !== null && obstacles.length > 0;
         // --------------------------------------------------
         // PLACEMENT EXCLUSION + BOUNDS (single pass per cell)
         // --------------------------------------------------
@@ -748,16 +618,15 @@ export class GrassSystem
                 const o = read * 16;
 
                 if (
-                    exclusionField &&
-                    sampleExclusionField(
-                        exclusionField,
+                    hasObstacles &&
+                    PlacementRegistry.isBlockedByObstacles(
+                        obstacles,
                         terrain.worldX + matrices[o + 12],
-                        terrain.worldZ + matrices[o + 14]
-                    ) > 0.0
+                        terrain.worldZ + matrices[o + 14],
+                        GRASS_EXCLUSION_RADIUS
+                    )
                 ) {
-
                     continue;
-
                 }
                 if (written !== read) {
 

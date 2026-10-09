@@ -19,24 +19,36 @@ self.onmessage = async (event) => {
         if (type !== "generate") {
             return;
         }
+        let modulesPromise = null;
+        const contexts = new Map();
 
-        const { WorldGenerator } =
-            await import("./WorldGenerator.js");
+        async function getContext(seed, baseHeight, maxHeight, heightScale) {
 
-        const { SurfaceSystem } =
-            await import("./SurfaceSystem.js");
+            modulesPromise ??= Promise.all([
+                import("./WorldGenerator.js"),
+                import("./SurfaceSystem.js")
+            ]);
 
-        const worldGenerator = new WorldGenerator({
-            seed,
-            baseHeight,
-            maxHeight,
-            heightScale
-        });
+            const [{ WorldGenerator }, { SurfaceSystem }] = await modulesPromise;
 
-        const surfaceSystem = new SurfaceSystem({
-            seed
-        });
+            const key = `${seed}|${baseHeight}|${maxHeight}|${heightScale}`;
 
+            let context = contexts.get(key);
+
+            if (!context) {
+
+                context = {
+                    worldGenerator: new WorldGenerator({ seed, baseHeight, maxHeight, heightScale }),
+                    surfaceSystem: new SurfaceSystem({ seed })
+                };
+
+                contexts.set(key, context);
+            }
+
+            return context;
+        }
+        const { worldGenerator, surfaceSystem } =
+            await getContext(seed, baseHeight, maxHeight, heightScale);
         const gridResolution = resolution + 1;
         const total = gridResolution * gridResolution;
 
@@ -159,11 +171,11 @@ self.onmessage = async (event) => {
             }
         }
 
-        console.log(
-            "Terrain worker generated:",
-            total,
-            "vertices"
-        );
+        // console.log(
+        //     "Terrain worker generated:",
+        //     total,
+        //     "vertices"
+        // );
 
         self.postMessage(
             {

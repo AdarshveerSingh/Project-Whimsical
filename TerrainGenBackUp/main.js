@@ -76,7 +76,7 @@ import {
 
 } from "./world/BushSystem.js";
 
-import { WaterSystem } from "./world/WaterSystem.js"; 
+import { WaterSystem } from "./world/WaterSystem.js";
 
 import {
 
@@ -94,7 +94,7 @@ import { TerrainWorkerPool } from "./world/TerrainWorkerPool.js";
 
 import { FrustumTest } from "./debug/FrustumTest.js";
 
-
+import { FarTerrainSystem } from "./world/FarTerrainSystem.js";
 // ==================================================
 
 // SCENE
@@ -149,7 +149,7 @@ const skyTexture = new THREE.TextureLoader().load(
 
 skyTexture.colorSpace = THREE.SRGBColorSpace;
 
-skyTexture.offset.y =- 0.07;
+skyTexture.offset.y = - 0.07;
 
 const skyGeometry = new THREE.SphereGeometry(
 
@@ -169,7 +169,7 @@ const skyMaterial = new THREE.MeshBasicMaterial({
 
     depthWrite: false,
 
-    fog:false
+    fog: false
 
 });
 
@@ -199,12 +199,12 @@ const camera =
 
         window.innerHeight,
 
-        0.1,
+        0.3,
 
         20000
 
     );
-
+camera.updateProjectionMatrix();
 camera.position.set(
 
     8,
@@ -227,21 +227,21 @@ camera.lookAt(
 
 const stats = new Stats();
 
-        stats.showPanel(0);
+stats.showPanel(0);
 
-        Object.assign(stats.dom.style, {
+Object.assign(stats.dom.style, {
 
-            position: "fixed",
+    position: "fixed",
 
-            left: "0px",
+    left: "0px",
 
-            top: "0px",
+    top: "0px",
 
-            zIndex: "9999"
+    zIndex: "9999"
 
-        });
+});
 
-        document.body.appendChild(stats.dom);
+document.body.appendChild(stats.dom);
 
 // ==================================================
 
@@ -589,7 +589,7 @@ fpsController =
 
             fallbackTerrainHeight,
 
-        movementSpeed: 5,
+        movementSpeed: 50,
 
         jumpHeight: 2,
 
@@ -625,7 +625,7 @@ const grassSystem =
 
         lodFar: 100,
 
-        placementRegistry: placementRegistry    
+        placementRegistry: placementRegistry
 
     });
 
@@ -717,6 +717,7 @@ const bushSystem =
 
     });
 const waterSystem = new WaterSystem({ scene, hideDistance: 300 });
+const farWater = new WaterSystem({ scene, hideDistance: 4000 });
 const chunkManager =
 
     new ChunkManager({
@@ -743,7 +744,7 @@ const chunkManager =
 
         chunkSize: 64,
 
-        viewDistance: 3,
+        viewDistance: 7,
 
         baseHeight: 0,
 
@@ -793,7 +794,13 @@ fpsController.terrainHeightFunction =
 
     );
 
-    // ==================================================
+const farTerrain = new FarTerrainSystem({
+    scene,
+    chunkManager,        // supplies the worker pool, surface system, world settings and near radius
+    water: farWater,
+    maxDistance: 2500
+});
+// ==================================================
 
 // PERFORMANCE DEBUG
 
@@ -1241,11 +1248,11 @@ function animate() {
 
     stats.begin();
 
-if (performanceDebug.enabled) {
+    if (performanceDebug.enabled) {
 
-    performanceDebug.beginFrame();
+        performanceDebug.beginFrame();
 
-}
+    }
 
     const delta =
 
@@ -1271,6 +1278,9 @@ if (performanceDebug.enabled) {
 
     chunkManager.update();
 
+    farTerrain.update(delta, fpsController.getPosition());
+    farWater.update(delta, fpsController.getPosition());
+
     grassSystem.update(
 
         delta,
@@ -1286,16 +1296,16 @@ if (performanceDebug.enabled) {
 
     flowerSystem.update(
 
-    delta
+        delta
 
-);
+    );
 
-bushSystem.update(
+    bushSystem.update(
 
-    delta
+        delta
 
-);
-waterSystem.update(delta, fpsController.getPosition());
+    );
+    waterSystem.update(delta, fpsController.getPosition());
     const t = performance.now() / 1000;
 
     // update leaf wind time (drives both leaves and their shadows)
@@ -1372,13 +1382,13 @@ waterSystem.update(delta, fpsController.getPosition());
 
     frustumTest.render();
 
-if (performanceDebug.enabled) {
+    if (performanceDebug.enabled) {
 
-    performanceDebug.endGPUQuery();
+        performanceDebug.endGPUQuery();
 
-    performanceDebug.update(delta);
+        performanceDebug.update(delta);
 
-}
+    }
 
     stats.end();
 

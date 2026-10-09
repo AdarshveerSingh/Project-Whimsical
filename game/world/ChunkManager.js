@@ -21,6 +21,7 @@ export class ChunkManager {
         rockSystem = null,
         flowerSystem = null,
         bushSystem = null,
+        waterSystem = null,
         chunkSize = 64,
 
         viewDistance = 3,
@@ -54,6 +55,7 @@ export class ChunkManager {
             flowerSystem;
         this.bushSystem =
             bushSystem;
+        this.waterSystem = waterSystem;
         // ==================================================
         // VEGETATION DEBUG TOGGLES
         // ==================================================
@@ -450,6 +452,9 @@ processLoadQueue(budget = 1) {
             currentChunk
         );
     }
+    if (this.waterSystem) {
+    this.waterSystem.registerTerrainChunk(currentChunk);
+}
 },
 
                 sun:
@@ -657,6 +662,9 @@ processLoadQueue(budget = 1) {
             );
 
         }
+        if (this.waterSystem) {
+    this.waterSystem.unregisterTerrainChunk(chunkX, chunkZ);
+}
         // ==================================================
         // TERRAIN
         // ==================================================

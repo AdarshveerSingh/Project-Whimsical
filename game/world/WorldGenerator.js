@@ -1,5 +1,8 @@
 import * as THREE from "../node_modules/three/build/three.module.js";
 
+const SEA_LEVEL_OVERRIDE = null;     // e.g. 9.5 to hard-code a level, null = automatic
+const SEA_LEVEL_PERCENTILE = 0.10;   // fraction of the world that ends up below sea level
+const seaLevelCache = new Map();
 
 export class WorldGenerator {
 
@@ -249,7 +252,69 @@ fractalNoise(x, z, layer) {
 
     }
 
+    getSeaLevel() {
 
+    if (this._seaLevel !== undefined) {
+        return this._seaLevel;
+    }
+
+    if (SEA_LEVEL_OVERRIDE !== null) {
+        this._seaLevel = SEA_LEVEL_OVERRIDE;
+        return this._seaLevel;
+    }
+
+    // Computed once per configuration and shared by every instance.
+    // (TerrainSystem creates one WorldGenerator per chunk.)
+    const key = `${this.seed}|${this.baseHeight}|${this.maxHeight}|${this.heightScale}`;
+
+    let level = seaLevelCache.get(key);
+
+    if (level === undefined) {
+        level = this.computeSeaLevel();
+        seaLevelCache.set(key, level);
+    }
+
+    this._seaLevel = level;
+
+    return level;
+}
+
+computeSeaLevel(samplesPerAxis = 100) {
+
+    const heights = new Float32Array(samplesPerAxis * samplesPerAxis);
+    const step = this.worldSize / samplesPerAxis;
+
+    let k = 0;
+
+    for (let iz = 0; iz < samplesPerAxis; iz++) {
+
+        const z = -this.halfWorldSize + (iz + 0.5) * step;
+
+        for (let ix = 0; ix < samplesPerAxis; ix++) {
+
+            const x = -this.halfWorldSize + (ix + 0.5) * step;
+
+            heights[k++] = this.getHeight(x, z);
+        }
+    }
+
+    heights.sort();
+
+    const index = Math.min(
+        heights.length - 1,
+        Math.floor(heights.length * SEA_LEVEL_PERCENTILE)
+    );
+
+    return heights[index];
+}
+
+getWaterLevel(x, z) {
+    return this.getSeaLevel();
+}
+
+getWaterDepth(x, z) {
+    return Math.max(0, this.getSeaLevel() - this.getHeight(x, z));
+}
     // ==================================================
     // CREATE HILLS FOR ONE MACRO CELL
     // ==================================================
