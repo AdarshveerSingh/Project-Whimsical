@@ -1,5 +1,15 @@
 # Project Whimsical
 
+<p align="center">
+  <img src="ForDocumentation/Whimsical_Upper.gif" alt="Project Whimsical gameplay showcase" width="100%">
+</p>
+
+<p align="center">
+  A stylized, procedural open-world adventure built with Three.js and WebGL.
+</p>
+
+
+
 *A cozy, stylized 3D RPG inspired by Studio Ghibli's art style and The Legend of Zelda.*
 
 > **Project Whimsical is a work in progress.** Its current MVP focuses on exploration, gathering, and survival, with a larger procedural world and additional gameplay systems planned for the future.
