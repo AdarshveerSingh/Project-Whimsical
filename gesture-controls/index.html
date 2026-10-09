@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Gesture Controls</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        body {
+            position: relative;
+        }
+
+        #video {
+            position: fixed;
+            inset: 0;
+
+            width: 100%;
+            height: 100%;
+
+            object-fit: cover;
+
+            transform: scaleX(-1);
+
+            z-index: 0;
+        }
+
+        canvas {
+            position: fixed;
+            inset: 0;
+
+            width: 100%;
+            height: 100%;
+
+            z-index: 1;
+
+            pointer-events: none;
+        }
+
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+
+            z-index: 10;
+
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+
+            padding: 8px 12px;
+
+            font-family: monospace;
+            font-size: 13px;
+
+            border-radius: 5px;
+        }
+    </style>
+
+    <!-- IMPORTANT -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three":
+                "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+
+            "three/addons/":
+                "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+
+    <video
+        id="video"
+        autoplay
+        muted
+        playsinline>
+    </video>
+
+    <div id="status">
+        Loading...
+    </div>
+
+    <script type="module" src="./main.js"></script>
+
+</body>
+</html>
