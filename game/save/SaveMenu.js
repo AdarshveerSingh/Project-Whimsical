@@ -107,7 +107,7 @@ export class SaveMenu {
         activeSave = null,
         seed,
         getState,
-        toggleKey = "KeyK"
+        toggleKey = "Escape"
     }) {
 
         this.saves = saves;
