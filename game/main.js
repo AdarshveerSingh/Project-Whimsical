@@ -94,7 +94,9 @@ import { TerrainWorkerPool } from "./world/TerrainWorkerPool.js";
 
 import { FrustumTest } from "./debug/FrustumTest.js";
 
+import { SaveManager } from "./save/SaveManager.js";
 
+import { SaveMenu } from "./save/SaveMenu.js";
 // ==================================================
 
 // SCENE
@@ -488,7 +490,17 @@ godRaysPass.uniforms
     .value =
 
     1.0;
+const saves = new SaveManager();
+await saves.open();
 
+// A save chosen in the menu (survives the reload), otherwise the last one used
+const activeId = saves.consumePendingLoad() ?? saves.getLastSaveId();
+const activeSave = activeId ? await saves.get(activeId) : null;
+
+saves.setLastSaveId(activeSave ? activeSave.id : null);   // clears a stale cookie
+
+const WORLD_SEED = activeSave?.seed ?? 482917;
+const settings = saves.getSettings();    // from localStorage, e.g. settings.viewDistance
 // ==================================================
 
 // CHUNK MANAGER
@@ -603,6 +615,7 @@ fpsController =
 
     });
 
+
 const placementRegistry =
 
     new PlacementRegistry({
@@ -617,7 +630,7 @@ const grassSystem =
 
         density: 120000,
 
-        seed: 482917,
+        seed: WORLD_SEED,
 
         lodNear: 32,
 
@@ -637,7 +650,7 @@ scene.add(
 
 const surfaceSystem = new SurfaceSystem({
 
-    seed: 482917
+    seed: WORLD_SEED
 
 });
 
@@ -651,7 +664,7 @@ const treeSystem =
 
         placementRegistry,
 
-        seed: 482917,
+        seed: WORLD_SEED,
 
         chunkSize: 64,
 
@@ -669,7 +682,7 @@ const rockSystem =
 
         placementRegistry,
 
-        seed: 482917,
+        seed: WORLD_SEED,
 
         chunkSize: 64,
 
@@ -687,7 +700,7 @@ const flowerSystem =
 
         surfaceSystem,
 
-        seed: 482917,
+        seed: WORLD_SEED,
 
         chunkSize: 64,
 
@@ -707,7 +720,7 @@ const bushSystem =
 
         placementRegistry,
 
-        seed: 482917,
+        seed: WORLD_SEED,
 
         chunkSize: 64,
 
@@ -751,7 +764,7 @@ const chunkManager =
 
         heightScale: 6.0,
 
-        seed: 482917,
+        seed: WORLD_SEED,
 
         surfaceSystem,
 
@@ -793,6 +806,72 @@ fpsController.terrainHeightFunction =
 
     );
 
+    let playTime = activeSave?.state?.playTime ?? 0;
+
+// Used when you press V, so the saved look direction survives the switch
+let pendingLook = activeSave?.state?.player
+    ? { yaw: activeSave.state.player.yaw, pitch: activeSave.state.player.pitch }
+    : null;
+
+function captureGameState() {
+
+    const p = fpsController.getPosition();     // eye position
+
+    return {
+        playTime,
+        player: {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            yaw: fpsController.yaw,
+            pitch: fpsController.pitch
+        }
+    };
+}
+
+function applyGameState(state) {
+
+    const s = state?.player;
+
+    if (!s || ![s.x, s.y, s.z, s.yaw, s.pitch].every(Number.isFinite)) {
+        return;
+    }
+
+    const groundEye =
+        chunkManager.getHeight(s.x, s.z) + fpsController.playerHeight;
+
+    fpsController.setPosition(s.x, Math.max(s.y, groundEye), s.z);
+
+    fpsController.yaw = s.yaw;
+    fpsController.pitch = s.pitch;
+    fpsController.updateCameraRotation();
+
+    // Clear momentum
+    fpsController.velocity.set(0, 0, 0);
+    fpsController.horizontalVelocity.set(0, 0, 0);
+    fpsController.dashTime = 0;
+    fpsController.jumpsUsed = 0;
+
+    // The game starts in orbit mode: put that camera next to the player
+    const eye = fpsController.getPosition();
+
+    camera.position.set(eye.x + 8, eye.y + 6, eye.z + 10);
+    controls.target.copy(eye);
+    controls.update();
+}
+
+if (activeSave?.state) {
+    applyGameState(activeSave.state);
+}
+
+const saveMenu = new SaveMenu({
+    saves,
+    activeSave,
+    seed: WORLD_SEED,
+    getState: captureGameState
+});
+
+saveMenu.startAutosave(60000);
     // ==================================================
 
 // PERFORMANCE DEBUG
@@ -927,15 +1006,16 @@ window.addEventListener(
 
                 "YXZ";
 
-            fpsController.yaw =
+            if (pendingLook) {
+    fpsController.yaw = pendingLook.yaw;
+    fpsController.pitch = pendingLook.pitch;
+    pendingLook = null;
+} else {
+    fpsController.yaw = camera.rotation.y;
+    fpsController.pitch = camera.rotation.x;
+}
 
-                camera.rotation.y;
-
-            fpsController.pitch =
-
-                camera.rotation.x;
-
-            fpsController.updateCameraRotation();
+fpsController.updateCameraRotation();
 
             fpsController.enable();
 
@@ -1251,6 +1331,7 @@ if (performanceDebug.enabled) {
 
         clock.getDelta();
 
+    playTime += delta;
     // ==============================================
 
     // PLAYER
@@ -1284,11 +1365,7 @@ if (performanceDebug.enabled) {
         fpsController.getPosition()
     );
 
-    flowerSystem.update(
-
-    delta
-
-);
+    flowerSystem.update(delta, fpsController.getPosition());
 
 bushSystem.update(
 

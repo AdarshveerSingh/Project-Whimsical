@@ -610,6 +610,7 @@ export class TerrainSystem {
     // ==================================================
 
     buildSkirt(positions, normals, segments) {
+        const skirtDepth = Math.max(SKIRT_DEPTH, this.size * 0.012);
 
         const n = segments + 1;
 
@@ -664,7 +665,7 @@ export class TerrainSystem {
                 o = v * 3;
 
                 skirtPositions[o] = positions[p];
-                skirtPositions[o + 1] = positions[p + 1] - SKIRT_DEPTH;
+                skirtPositions[o + 1] = positions[p + 1] - skirtDepth;
                 skirtPositions[o + 2] = positions[p + 2];
 
                 skirtNormals[o] = normals[p];

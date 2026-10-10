@@ -180,6 +180,7 @@ const FRAGMENT_SHADER = /* glsl */`
     uniform float edgeFade;
     uniform float foamWidth;
     uniform float foamStrength;
+    uniform vec4 exclusionRect;
 
     varying float vDepth;
     varying vec3 vWorldPos;
@@ -304,7 +305,12 @@ const FRAGMENT_SHADER = /* glsl */`
         if (vDepth <= 0.0) {
             discard;
         }
-
+           if (
+       vWorldPos.x > exclusionRect.x && vWorldPos.x < exclusionRect.z &&
+       vWorldPos.z > exclusionRect.y && vWorldPos.z < exclusionRect.w
+   ) {
+       discard;
+   }
         float depthT = clamp(vDepth / deepDepth, 0.0, 1.0);
 
         // Pattern space: world XZ in "patch" units
@@ -479,6 +485,7 @@ export class WaterSystem {
                     patchRange: vec2(p.patchRange),
                     sparkleFadeStart: num(p.sparkleFadeStart),
                     sparkleFadeEnd: num(p.sparkleFadeEnd),
+                    exclusionRect: { value: new THREE.Vector4(0, 0, 0, 0) },
 
                     fresnelStrength: num(p.fresnelStrength),
                     opacityShallow: num(p.opacityShallow),
@@ -499,7 +506,24 @@ export class WaterSystem {
         });
     }
 
+    setExclusionRect(minX, minZ, maxX, maxZ) {
+    this.material.uniforms.exclusionRect.value.set(minX, minZ, maxX, maxZ);
+}
 
+setChunkEnabled(chunkX, chunkZ, enabled) {
+
+    const chunk = this.chunks.get(`${chunkX},${chunkZ}`);
+
+    if (!chunk) {
+        return;
+    }
+
+    chunk.enabled = enabled;
+
+    if (chunk.mesh) {
+        chunk.mesh.visible = enabled;
+    }
+}
     // ==================================================
     // REGISTER CHUNK
     // ==================================================
@@ -518,7 +542,8 @@ export class WaterSystem {
             mesh: null,
             centerX: 0,
             centerZ: 0,
-            half: 0
+            half: 0,
+            enabled: true
         };
 
         // Registered even when there is no water, so the chunk
@@ -666,7 +691,7 @@ export class WaterSystem {
             0,
             terrain.worldOffsetZ
         );
-
+        mesh.visible = record.enabled;
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
 
@@ -724,7 +749,7 @@ export class WaterSystem {
                 0
             );
 
-            chunk.mesh.visible = dx * dx + dz * dz < hideSq;
+            chunk.mesh.visible = chunk.enabled && dx * dx + dz * dz < hideSq;
         }
     }
 

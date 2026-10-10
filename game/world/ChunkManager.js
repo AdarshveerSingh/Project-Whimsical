@@ -6,6 +6,7 @@ import { RockSystem } from "./RockSystem.js";
 import { FlowerSystem } from "./FlowerSystem.js";
 import { BushSystem } from "./BushSystem.js";
 import { TerrainWorkerPool } from "./TerrainWorkerPool.js";
+import { WorldGenerator } from "./WorldGenerator.js";
 
 export class ChunkManager {
 
@@ -148,9 +149,16 @@ export class ChunkManager {
         this.loadQueue = [];
         this.loadQueued = new Set();
 
+        this.fallbackGenerator = new WorldGenerator({
+    seed: this.seed,
+    baseHeight: this.baseHeight,
+    maxHeight: this.maxHeight,
+    heightScale: this.heightScale
+});
+
     }
 
-
+    
     // ==================================================
     // CHUNK KEY
     // ==================================================
@@ -952,7 +960,7 @@ processLoadQueue(budget = 1) {
             !loadedChunk
         ) {
 
-            return this.baseHeight;
+            return this.fallbackGenerator.getHeight(x, z);
         }
 
 
