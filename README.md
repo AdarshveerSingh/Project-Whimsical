@@ -325,7 +325,7 @@ The game has developed incrementally through experiments with rendering, modelin
 
 <table>
   <tr>
-    <td width="55%"><img src="ForDocumentation/DevJourney_01_AnimationMixer.gif" alt="Early animation mixer experiment" width="100%"></td>
+    <td width="55%"><img src="ForDocumentation/DevJourney_01_Animation.gif" alt="Early animation mixer experiment" width="100%"></td>
     <td valign="top">
       <h3>1 · Initial Three.js Experiments</h3>
       <p>The earliest experiments focused on understanding Three.js rendering, model loading, animation mixers, and the fundamentals of building a 3D scene in the browser.</p>
