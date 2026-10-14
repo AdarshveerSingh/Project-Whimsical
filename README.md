@@ -1,12 +1,16 @@
 <div align="center">
 
-<img src="ForDocumentation/Whimsical_Upper.gif" alt="Project Whimsical gameplay showcase" width="100%">
-<!-- SHOW: 8-12 second seamless loop. Walk through the meadow at golden hour: grass swaying, a short dash, fog softening the distance. -->
+<img src="ForDocumentation/logo.png" alt="Project Whimsical Title Card" width="100%">
 
 <br><br>
 
 # 🌿 Project Whimsical
+<div align="center">
 
+<img src="ForDocumentation/Whimsical_Upper.gif" alt="Project Whimsical gameplay showcase" width="100%">
+<!-- SHOW: 8-12 second seamless loop. Walk through the meadow at golden hour: grass swaying, a short dash, fog softening the distance. -->
+
+<br><br>
 ### *A stylized, procedural open-world adventure built with Three.js and WebGL*
 
 *A cozy, stylized 3D RPG inspired by Studio Ghibli's art style and The Legend of Zelda.*
