@@ -645,7 +645,7 @@ Project Whimsical separates the placement and management of environmental object
 
 <table>
   <tr>
-    <td width="33%"><img src="ForDocumentation/Props_01_Blender_Bushes.png" alt="Bush models in the Blender viewport" width="100%"></td>
+    <td width="33%"><img src="ForDocumentation/Props_01_Blender_Bushes.gif" alt="Bush models in the Blender viewport" width="100%"></td>
     <td width="33%"><img src="ForDocumentation/Props_02_Blender_Rock_LODs.png" alt="Rock variations and their LOD levels in Blender" width="100%"></td>
     <td width="33%"><img src="ForDocumentation/Props_03_Bushes_And_Flowers.png" alt="Bushes and flowers placed in the world" width="100%"></td>
   </tr>
