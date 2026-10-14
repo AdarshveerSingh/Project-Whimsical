@@ -520,7 +520,7 @@ Water meshes are only built where terrain dips below sea level, so most chunks p
 <table>
   <tr>
     <td width="50%"><img src="ForDocumentation/Shader_03_Ghibli_Water.gif" alt="Animated Ghibli-style water with sparkles" width="100%"></td>
-    <td width="50%"><img src="ForDocumentation/Shader_04_Water_Blender_vs_Game.png" alt="The Blender node graph preview next to the in-game result" width="100%"></td>
+    <td width="50%"><img src="ForDocumentation/Shader_04_Water_Blender_vs_Game.gif" alt="The Blender node graph preview next to the in-game result" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><sub><b>In game: sparkles, ripples and a soft shoreline</b></sub></td>
@@ -566,20 +566,6 @@ Noise provides a way to generate values that vary smoothly across space. This is
 
 The exact role of each noise function depends on the system using it. Noise is a building block rather than a complete world-generation algorithm: it must be combined with placement rules, terrain constraints, and other systems to create a convincing environment.
 
-<div align="center">
-  <img src="ForDocumentation/Noise_01_Density_Maps_Grid.png" alt="Density maps for grass, trees, rocks and flowers" width="90%">
-  <br><sub><b>Density maps: grass, trees, rocks and flowers each get their own noise field</b></sub>
-</div>
-
-<!-- SHOW (Noise_01): a 2x2 or 1x4 grid of the density maps (use generatePropDistributionMap) for grass, tree, rock, flower. Label each. -->
-
-<div align="center">
-  <img src="ForDocumentation/Noise_02_Height_And_Surface_Maps.png" alt="Height map and surface map side by side with the rendered terrain" width="90%">
-  <br><sub><b>Height map, surface map (grass, dirt, gravel, rock), and the resulting terrain</b></sub>
-</div>
-
-<!-- SHOW (Noise_02): three panels: generateDisplacementMap output, generateSurfaceMap output, and a screenshot of the same chunk rendered. -->
-
 ---
 
 <a id="terrain"></a>
@@ -615,11 +601,9 @@ The terrain system therefore uses a distance-aware approach with multiple terrai
 
 <table>
   <tr>
-    <td width="50%"><img src="ForDocumentation/Terrain_02_LOD_Wireframe.png" alt="Terrain wireframe showing three resolution levels" width="100%"></td>
     <td width="50%"><img src="ForDocumentation/Terrain_03_Surface_Types.png" alt="Terrain surface types: grass, dirt, gravel and rock" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Three terrain resolutions in wireframe</b></sub></td>
     <td align="center"><sub><b>Surface types blended by slope and noise</b></sub></td>
   </tr>
 </table>
@@ -647,11 +631,6 @@ The intended benefits include:
 
 A far-terrain **quad-tree** is being developed in a separate version of the project, aiming at a view range approaching **2 km**. Terrain nodes double in size with distance (64, 128, 256, 512, 1024 units), so the vertex count per node stays constant while the visible distance grows. An earlier experiment is available in `TerrainGenBackUp/`. It is not yet the finalized terrain architecture.
 
-<div align="center">
-  <img src="ForDocumentation/Terrain_04_QuadTree_Wireframe.png" alt="Quad-tree terrain nodes in wireframe fading toward the horizon" width="85%">
-  <br><sub><b>Experimental quad-tree: small cells near the player, huge cells at the horizon</b></sub>
-</div>
-
 <!-- SHOW (Terrain_04): wireframe view from a hill: fine cells close up growing to very large cells at the horizon. Use farTerrain.setWireframe(true). -->
 
 ---
@@ -666,12 +645,12 @@ Project Whimsical separates the placement and management of environmental object
 
 <table>
   <tr>
-    <td width="33%"><img src="ForDocumentation/Props_01_Blender_Trees.png" alt="Tree models in the Blender viewport" width="100%"></td>
+    <td width="33%"><img src="ForDocumentation/Props_01_Blender_Bushes.png" alt="Bush models in the Blender viewport" width="100%"></td>
     <td width="33%"><img src="ForDocumentation/Props_02_Blender_Rock_LODs.png" alt="Rock variations and their LOD levels in Blender" width="100%"></td>
     <td width="33%"><img src="ForDocumentation/Props_03_Bushes_And_Flowers.png" alt="Bushes and flowers placed in the world" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Trees (Blender)</b></sub></td>
+    <td align="center"><sub><b>Bushes (Blender)</b></sub></td>
     <td align="center"><sub><b>Rock variations and LODs</b></sub></td>
     <td align="center"><sub><b>Bushes and flowers in game</b></sub></td>
   </tr>
@@ -711,13 +690,6 @@ Procedural placement must account for more than randomness. Trees, rocks, bushes
 The `PlacementRegistry` provides a shared mechanism for tracking placements and checking whether a proposed location is blocked. This allows different systems to coordinate their placement decisions rather than each system making decisions in complete isolation.
 
 It also introduces its own performance considerations. Repeated spatial checks and unnecessary allocations can become expensive when many objects are generated, so the registry and its callers are important optimization targets.
-
-<div align="center">
-  <img src="ForDocumentation/Props_04_Placement_Registry_Debug.png" alt="Debug view of placement footprints around trees and rocks" width="85%">
-  <br><sub><b>Footprints registered by trees and rocks keep grass and other props out</b></sub>
-</div>
-
-<!-- SHOW (Props_04, optional): top-down debug view with circles drawn at each registered footprint (trees, rocks, bushes) and grass cleared inside them. -->
 
 ### Level of Detail
 
@@ -918,7 +890,7 @@ The ability to despawn props selectively is particularly useful: it helps isolat
 <table>
   <tr>
     <td width="50%"><img src="ForDocumentation/Perf_01_Debug_Panel.png" alt="The in-game performance debugger panel" width="100%"></td>
-    <td width="50%"><img src="ForDocumentation/Perf_03_Despawn_Test.gif" alt="Despawning one prop type at a time and watching the triangle count" width="100%"></td>
+    <td width="50%"><img src="ForDocumentation/Perf_03_Despawn_Test.png" alt="Despawning one prop type at a time and watching the triangle count" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><sub><b>The in-game debugger (F3)</b></sub></td>
@@ -941,13 +913,6 @@ The built-in Google Chrome DevTools Performance panel is another important part 
 - Work associated with rendering and procedural generation.
 
 Combining game-specific instrumentation with browser profiling makes it easier to distinguish CPU-side bottlenecks from GPU or rendering-related costs.
-
-<div align="center">
-  <img src="ForDocumentation/Perf_02_Chrome_Profile_Before_After.png" alt="Chrome DevTools profile before and after an optimization" width="90%">
-  <br><sub><b>Chrome DevTools: the same test before and after an optimization</b></sub>
-</div>
-
-<!-- SHOW (Perf_02): two DevTools Performance screenshots stacked: before (long function bars or frame spikes) and after the fix. Label them. -->
 
 ### The optimization workflow
 
@@ -984,13 +949,6 @@ The following roadmap distinguishes existing work from ideas that are still expe
 | 💰 | **Economy** | 🔜 Planned | The world's economy and resource interactions. |
 | 🏕️ | **Gathering and survival** | 🚧 MVP in progress | Expanding the MVP into a fuller gather-and-survive loop. |
 | ✋ | **Gesture-based controls** | ✅ Prototype | Evaluate whether it fits the final game. Prototype in `gesture-controls/`. |
-
-<div align="center">
-  <img src="ForDocumentation/Roadmap_01_Gesture_Controls.gif" alt="Gesture prototype: a light ball from a finger snap and a fireball from an open palm" width="70%">
-  <br><sub><b>Gesture prototype: snap fingers for a light ball, open your palm for a fireball</b></sub>
-</div>
-
-<!-- SHOW (Roadmap_01): webcam view of the gesture prototype: finger snap spawns the light ball, open palm launches the fireball. -->
 
 ### Rendering and optimization
 
